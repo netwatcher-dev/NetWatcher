@@ -1,3 +1,3 @@
 #/bin/sh
 cd core/
-./start_core &
+sudo ./start_core &
