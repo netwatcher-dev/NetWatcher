@@ -80,7 +80,7 @@ int count_entry, cont_buffer;
 
 int main(int argc, char *argv[])
 {
-    int i, shmDesc, semDesc;
+    int shmDesc, semDesc;
     sigset_t ens;
     struct sigaction action;
     mymemory *  mem; /*shared memory*/
@@ -93,8 +93,6 @@ int main(int argc, char *argv[])
 
     initFilter();
 
-    printf("(dispatch) start\n");
-
     if(argc != 4)
     {
         fprintf(stderr,"(dispatch) argument count must be 4, get %d\n",argc);
@@ -102,10 +100,6 @@ int main(int argc, char *argv[])
     }
     
     /*arg0 = prgr_name, arg1 = from_control, arg2 = to_control, arg3 = to_collector*/
-    for(i = 0; i < argc;i++)
-    {
-        printf("(dispatch) arg %d : %s\n",i,argv[i]);
-    }
     
     shmDesc = strtol(argv[1],NULL,10);
     if( errno == ERANGE)
@@ -133,6 +127,8 @@ int main(int argc, char *argv[])
         fprintf(stderr,"(dispatch) failed to create shared memory\n");
         return EXIT_FAILURE;
     }
+    
+    printf("(dispatch) start : shmDesc:(%d), semDesc:(%d), to_collector:(%d)\n",shmDesc,semDesc,to_collector);
     
     /*on debloque le signal qui nous interesse*/
     sigemptyset(&ens);
@@ -213,6 +209,7 @@ int main(int argc, char *argv[])
                 case 0:
                     printf("(dispatch) end of file\n");
                     haltpcap();
+                    flushAllSegment();/*on detruit la liste des segments tcp*/
                     act = ACT_STOP;
                     break;
                 case -2: /*pcap_breakloop case*/
@@ -710,7 +707,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
 			 
 		     return;
 		}
-		sendToAllNode(packet,link_info.header_size+ntohs(ip->ip_len));
+		sendToAllNode(packet,link_info.header_size+ntohs(ip->ip_len),(pkthdr->ts));
         /* COLLECTOR */
         header_to_send.protocol = ip->ip_p;
         memcpy(header_to_send.sip, &ip->ip_src.s_addr, sizeof(ip->ip_src.s_addr));
@@ -734,7 +731,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
 	    /*TODO verifier la taille du paquet*/
 	    
 	    /*TODO adapter checkTCP & UDP pour de l'IPv6*/
-	    sendToAllNode(packet,link_info.header_size+ip_header_size+ntohs(ip6->ip_len));
+	    sendToAllNode(packet,link_info.header_size+ip_header_size+ntohs(ip6->ip_len),(pkthdr->ts));
 	}
 	/*else
 	{
@@ -773,7 +770,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
                 #endif
                 
                 /*send segment*/
-                sendToAllNode(tmp,ntohs(ip->ip_len)+link_info.header_size);
+                sendToAllNode(tmp,ntohs(ip->ip_len)+link_info.header_size,pkthdr->ts);
                 free(tmp);
                 
                 /*on met a jour le prochain numero de sequence attendu*/

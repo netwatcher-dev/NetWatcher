@@ -10,7 +10,8 @@ CAPTUREFILTERLIB=$(REP)/capturefilterlib
 SHAREDMEMORYLIB=$(REP)/sharedmemorylib
 DELAYEDLIB=$(REP)/delayedlib
 
-CC=gcc -g -O0 -DDEBUG_MEMORY_SEG
+CC=gcc -g
+
 EXEC=dispatch start_core control collector command wait filter_test
 OBJS=$(DELAYEDLIB)/delayedlib.o $(STRUCTLIB)/structlib.o $(SEGMENTLIB)/segmentlib.o $(CONTROLLIB)/controllib.o $(COLLECTORLIB)/collectorlib.o $(UTILLIB)/utillib.o $(CAPTUREFILTERLIB)/capturefilterlib.o $(SHAREDMEMORYLIB)/sharedmemorylib.o
 

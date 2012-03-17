@@ -43,9 +43,7 @@ int main(int argc, char *argv[])
     /*###########################################################*/
     /*##################### ARGUMENTS CHECKS ####################*/
     /*###########################################################*/
-    
-    printf("(control) start\n");
-    
+        
     if(argc != 6)
     {
         fprintf(stderr,"(control) argument count must be 4, get %d\n",argc);
@@ -93,7 +91,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
     
-    printf("(control) shmDesc:(%d), semDesc:(%d), to_collector:(%d), from_collector:(%d), dispatch_id:(%d)",shmDesc,semDesc,to_collector,from_collector,dispatch_id);
+    printf("(control) start : shmDesc:(%d), semDesc:(%d), to_collector:(%d), from_collector:(%d), dispatch_id:(%d)\n",shmDesc,semDesc,to_collector,from_collector,dispatch_id);
     
     /*###########################################################*/
     /*##################### SYSTEM INIT #########################*/
@@ -143,7 +141,7 @@ int main(int argc, char *argv[])
        
     while(1)
     {
-        printf("En attente de client \n");
+        printf("(control) Wait for a client\n");
         /*on attend un client*/
         if ((client_socket = accept(serveur_socket, (struct sockaddr *) &adresse_client , &adresse_size)) < 0)
         {   

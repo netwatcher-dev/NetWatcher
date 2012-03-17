@@ -341,7 +341,7 @@ void removeAllFilter()
     master_filter.filter_first_node = NULL;
 }
 
-int sendToAllNode(register const uint8 *p,unsigned int buflen)
+int sendToAllNode(register const uint8 *p,unsigned int buflen, struct timeval ts)
 {
     struct filter_node * root_node = master_filter.filter_first_node, * node_tmp;
     struct filter_item * pc;
@@ -366,6 +366,7 @@ int sendToAllNode(register const uint8 *p,unsigned int buflen)
         			if( ((u_int)pc->k) != 0)
         			{
         			    buflen -= link_info.header_size;
+                        write(pc->k,&ts,sizeof(struct timeval));
                         write(pc->k,&buflen,sizeof(unsigned int));/*TODO verifier la valeur de retour si le wait plante*/
         			    write(pc->k,&p[link_info.header_size],buflen);/*TODO verifier la valeur de retour si le wait plante*/
         			}
@@ -396,6 +397,7 @@ int sendToAllNode(register const uint8 *p,unsigned int buflen)
         			if( ((u_int)A) != 0)
         			{
         			    buflen -= link_info.header_size;
+        			    write(pc->k,&ts,sizeof(struct timeval));
                         write(pc->k,&buflen,sizeof(unsigned int));/*TODO verifier la valeur de retour si le wait plante*/
         			    write(pc->k,&p[link_info.header_size],buflen);/*TODO verifier la valeur de retour si le wait plante*/
         			}

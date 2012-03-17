@@ -48,7 +48,6 @@ typedef struct
 } my_args;
 
 extern int from_collector, to_collector, dispatch_id;
-extern uint32 tokenCount;
 extern mymemory * mem;
 
 
