@@ -79,8 +79,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    setitimer (ITIMER_REAL, &timer, NULL); 
-    /*set_non_blocking(s_sock);  Non Blocking mode */
+    /*setitimer (ITIMER_REAL, &timer, NULL); 
+    set_non_blocking(s_sock);  Non Blocking mode */
 
     FD_ZERO(&fifo_read);
     FD_SET(p, &fifo_read);
