@@ -159,6 +159,7 @@ int main(int argc, char *argv[])
                     return EXIT_SUCCESS;  
                 }
 
+                data_to_receive -= recv_size;
                 if(client_connected)
                 {
                     if(send(c_sock, buff, recv_size,0) < recv_size)
@@ -167,7 +168,6 @@ int main(int argc, char *argv[])
                         continue;
                     }
                 }
-                data_to_receive -= recv_size;
             }         
         }
     }
