@@ -88,7 +88,7 @@ void initFilter();
 int addFilter(const char * filter_string, int filter_id, int pipe);
 int removeFilter(int end_node_id);
 void removeAllFilter();
-int sendToAllNode(register const u_char *p,unsigned int buflen);
+int sendToAllNode(register const u_char *p,unsigned int buflen, struct timeval ts);
 void traversal();
 void innerTraversal(struct filter_item * i, int level);
 

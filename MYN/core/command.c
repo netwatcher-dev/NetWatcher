@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     int client_socket, port, ret;
     struct sockaddr_in server_address;
     
-    if(strcmp("help", argv[1]) == 0)
+    if(argc < 2 || strcmp("help", argv[1]) == 0)
     {
         usage();        
         return EXIT_SUCCESS;

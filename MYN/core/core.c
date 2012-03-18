@@ -130,7 +130,6 @@ int main(int argc, char *argv[])
         sprintf(arg1,"%d",shmDesc /*pipe_control_to_dispatch[0]*/);
         sprintf(arg2,"%d",semDesc /*pipe_dispatch_to_control[1]*/);
         sprintf(arg3,"%d",pipe_dispatch_to_collector[1]);
-        printf("try to lauchn dispatch\n");
         if( execlp("./dispatch","dispatch", arg1, arg2, arg3, (char *)0) < 0)
         {
             perror("(CORE main) failed to execlp dispatch");
@@ -177,7 +176,6 @@ int main(int argc, char *argv[])
     sprintf(arg4,"%d",pipe_collector_to_control[0]);
     sprintf(arg5,"%d",child1);
 
-    printf("try to lauchn control\n");
     if( execlp("./control","control", arg1, arg2, arg3, arg4, arg5, (char *)0) < 0)
     {
         perror("(CORE main) failed to execlp dispatch");

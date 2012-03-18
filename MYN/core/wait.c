@@ -39,6 +39,9 @@ int main(int argc, char *argv[])
     fd_set fifo_read, ready_read; /* File descriptor */    
     struct sigaction action;
     struct itimerval timer;
+    struct timeval ts;
+
+    printf("(wait) start\n");
 
     if(argc != 3)
     {
@@ -79,8 +82,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    /*setitimer (ITIMER_REAL, &timer, NULL); 
-    set_non_blocking(s_sock);  Non Blocking mode */
+    setitimer (ITIMER_REAL, &timer, NULL); 
+    /*set_non_blocking(s_sock);  Non Blocking mode */
 
     FD_ZERO(&fifo_read);
     FD_SET(p, &fifo_read);
@@ -102,6 +105,8 @@ int main(int argc, char *argv[])
         
         if(normal_signal == 0)
         {
+            normal_signal = 1;
+            continue;
             /*vider le buffer*/
         }
     
@@ -127,7 +132,27 @@ int main(int argc, char *argv[])
         /* FROM PIPE */
         if(FD_ISSET(p,&ready_read))
         {
-            size_to_read = BUFFER_SIZE; /* Default buffer size */
+            /*printf("read\n");*/
+            /*read the TIMESTAMP*/
+            if( (recv_size = read(p, &ts, sizeof(struct timeval))) < 0) /* Size to read */
+            {
+                perror("(wait) read failed");
+                return EXIT_FAILURE;
+            }
+            
+            /*printf("%u, %u\n",ts.tv_sec,ts.tv_usec);*/
+            
+            if(recv_size == 0)
+            {
+                /*end of stream*/
+                printf("(wait) pipe end of stream, normal exit\n");
+                close(p);
+                close(c_sock);
+                close(s_sock);
+                return EXIT_SUCCESS;
+            }
+            
+            /*read the packet SIZE*/
             if( (recv_size = read(p, &data_to_receive, sizeof(data_to_receive))) < 0) /* Size to read */
             {
                 perror("(wait) read failed");
@@ -138,9 +163,21 @@ int main(int argc, char *argv[])
             {
                 /*end of stream*/
                 printf("(wait) pipe end of stream, normal exit\n");
+                close(p);
+                close(c_sock);
+                close(s_sock);
                 return EXIT_SUCCESS;
             }
+            
+            /*RECEPTION D'UNE COMMANDE*/
+            
+            /*DECISION DE MISE EN CACHE*/
+            
+                /*EMISSION IMMEDIATE*/
+                
+                /*MISE EN CACHE*/
 
+            size_to_read = BUFFER_SIZE; /* Default buffer size */
             while(data_to_receive > 0) /* Reading data */
             {
                 if(data_to_receive < BUFFER_SIZE) /* Smaller buffer size */
@@ -156,10 +193,14 @@ int main(int argc, char *argv[])
                 {
                     /*end of stream*/
                     printf("(wait) pipe end of stream, normal exit\n");
+                    close(p);
+                    close(c_sock);
+                    close(s_sock);
                     return EXIT_SUCCESS;  
                 }
-
+                
                 data_to_receive -= recv_size;
+                
                 if(client_connected)
                 {
                     if(send(c_sock, buff, recv_size,0) < recv_size)
