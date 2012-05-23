@@ -20,7 +20,6 @@
 #include <errno.h>
 
 #include "./controllib/controllib.h"
-#include "./structlib/structlib.h"
 #include "./sharedmemorylib/sharedmemorylib.h"
 
 int manageClient(int descriptor);
@@ -28,7 +27,6 @@ int manageClient(int descriptor);
 int from_collector, to_collector, dispatch_id;
 mymemory * mem;
 
-struct master_filter master_filter;
 int capture_mode; /* Don't care */
 
 #define SERVEUR_PORT 22222
@@ -52,7 +50,7 @@ int main(int argc, char *argv[])
     }
     
     shmDesc = strtol(argv[1],NULL,10);
-    if( errno == ERANGE)
+    if(errno == ERANGE || errno == EINVAL)
     {
         perror("(control) failed to convert shared memory descriptor : ");
         kill(0, SIGINT);
@@ -60,7 +58,7 @@ int main(int argc, char *argv[])
     }
     
     semDesc = strtol(argv[2],NULL,10);
-    if( errno == ERANGE)
+    if(errno == ERANGE || errno == EINVAL)
     {
         perror("(control) failed to convert semaphore descriptor : ");
         kill(0, SIGINT);
@@ -68,7 +66,7 @@ int main(int argc, char *argv[])
     }
     
     to_collector = strtol(argv[3],NULL,10);
-    if( errno == ERANGE)
+    if(errno == ERANGE || errno == EINVAL)
     {
         perror("(control) failed to convert pipe id to_collector : ");
         kill(0, SIGINT);
@@ -76,7 +74,7 @@ int main(int argc, char *argv[])
     }
     
     from_collector = strtol(argv[4],NULL,10);
-    if( errno == ERANGE)
+    if(errno == ERANGE || errno == EINVAL)
     {
         perror("(control) failed to convert pipe id from_collector : ");
         kill(0, SIGINT);
@@ -84,7 +82,7 @@ int main(int argc, char *argv[])
     }
     
     dispatch_id = strtol(argv[5],NULL,10);
-    if( errno == ERANGE)
+    if(errno == ERANGE || errno == EINVAL)
     {
         perror("(control) failed to convert dispatch_id : ");
         kill(0, SIGINT);
@@ -144,11 +142,10 @@ int main(int argc, char *argv[])
         printf("(control) Wait for a client\n");
         /*on attend un client*/
         if ((client_socket = accept(serveur_socket, (struct sockaddr *) &adresse_client , &adresse_size)) < 0)
-        {   
-            continue;         
-            /*perror("(control) accept error in core");
+        {      
+            perror("(control) accept error in core");
             kill(0, SIGINT);
-            exit(EXIT_FAILURE);*/
+            exit(EXIT_FAILURE);
         }
         
         /*on lance le processus de traitement*/
@@ -181,7 +178,7 @@ int manageClient(int descriptor)
     
     while(1)
     {
-        if(  (size = recv(descriptor, &command, sizeof(sint8),0)) != sizeof(sint8))
+        if(  (size = recv(descriptor, &command, sizeof(sint8),MSG_WAITALL)) != sizeof(sint8))
         {
             if(size == 0)
                 return EXIT_SUCCESS;
@@ -211,24 +208,25 @@ int manageClient(int descriptor)
                 break;
 
             case COMMAND_SET_BUFFER_LENGTH_PROTO_LIST:
-                printf("(control) set timeout protocol listing\n");
+                printf("(control) set length protocol listing\n");
                 if(setLengthProtocolList(descriptor) != 0)
                     return EXIT_FAILURE;    
                 break;
 
+            case COMMAND_SELECT_CAPTURE_DEVICE_WITH_MONITORING:
             case COMMAND_SELECT_CAPTURE_DEVICE:
                 printf("(control) select capture device\n");
 
                 if(setCaptureMode(LIVE_MODE) != 0) /* Set capture mode in collector */
                     return EXIT_FAILURE;
                     
-                if(selectCaptureDevice(descriptor) != 0)
+                if(selectCaptureDevice(descriptor,command) != 0)
                     return EXIT_FAILURE;
                 break;
                 
             case COMMAND_DISABLE_CAPTURE_DEVICE:
                 printf("(control) disable capture device\n");
-                if(directTransmit(descriptor,COMMAND_DISABLE_CAPTURE_DEVICE) != 0)
+                if(disable_device(descriptor) != 0)
                     return EXIT_FAILURE;
                 break;
                 
@@ -305,6 +303,36 @@ int manageClient(int descriptor)
             case COMMAND_STOP_RECORD:
                 printf("(control) stop record\n");
                 if(directTransmit(descriptor,COMMAND_STOP_RECORD) != 0)
+                    return EXIT_FAILURE;
+                break;
+                
+            case COMMAND_STREAM_PAUSE:
+                printf("(control) pause the stream\n");
+                if(directTransmit(descriptor,COMMAND_STREAM_PAUSE) != 0)
+                    return EXIT_FAILURE;
+                break;
+                    
+            case COMMAND_STREAM_RESUME:
+                printf("(control) resume the stream\n");
+                if(directTransmit(descriptor,COMMAND_STREAM_RESUME) != 0)
+                    return EXIT_FAILURE;
+                break;
+                
+            case COMMAND_FILE_READ:
+                printf("(control) read file\n");
+                if(directTransmit(descriptor,COMMAND_FILE_READ) != 0)
+                    return EXIT_FAILURE;
+                break;
+                
+            case COMMAND_FILE_GOTO:
+                printf("(control) go to\n");
+                if(file_goto(descriptor) != 0)
+                    return EXIT_FAILURE;
+                break;
+            
+            case COMMAND_GET_STATE:
+                printf("(control) get state\n");
+                if(get_state(descriptor) != 0)
                     return EXIT_FAILURE;
                 break;
                 

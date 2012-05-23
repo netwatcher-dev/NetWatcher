@@ -24,7 +24,7 @@ void send_protocol_list(DLinkedList *list, DLinkedList *list_time, int pipe_to_c
 	struct struct_proto * proto_tmp;
 	struct_ip * ip_tmp = NULL;
 	collector_entry file_entry; /* An element in the file */
-	int size_entry_file = (sizeof(collector_entry)-(2*sizeof(uint8)));
+	int size_entry_file = (sizeof(collector_entry)-(2*sizeof(uint8))), count = 0;
 
 	if(list != NULL)
 	{
@@ -34,9 +34,8 @@ void send_protocol_list(DLinkedList *list, DLinkedList *list_time, int pipe_to_c
 	        return;
 	    }
 
-
 		n_temp = list->head; /* First item */
-		while(n_temp != NULL)
+        for(;n_temp != NULL;count++)
 		{
 			/*printf("[ip.src=%d.%d.%d.%d ip.dst=%d.%d.%d.%d ]\n",((struct_ip*)n_temp->entry)->sip[0],((struct_ip*)n_temp->entry)->sip[1],((struct_ip*)n_temp->entry)->sip[2],((struct_ip*)n_temp->entry)->sip[3],((struct_ip*)n_temp->entry)->dip[0],((struct_ip*)n_temp->entry)->dip[1],((struct_ip*)n_temp->entry)->dip[2],((struct_ip*)n_temp->entry)->dip[3]
 			);*/
@@ -52,7 +51,7 @@ void send_protocol_list(DLinkedList *list, DLinkedList *list_time, int pipe_to_c
 				file_entry.protocol = proto_tmp->protocol; /* PROTOCOL */
 				file_entry.epoch_time = proto_tmp->epoch_time; /* TIME */
 
-				printf("(collector) debug : TIME %d \n",file_entry.epoch_time);
+				/*printf("(collector) debug : TIME %d \n",file_entry.epoch_time);*/
 				if(write(pipe_to_control ,&file_entry, size_entry_file) != size_entry_file)
 				{
 
@@ -64,7 +63,8 @@ void send_protocol_list(DLinkedList *list, DLinkedList *list_time, int pipe_to_c
 				proto_tmp = proto_tmp->next; /* Next Proto structure */
 			}
 			n_temp = n_temp->next;
-		}		
+		}
+        printf("count = %d vs list_time->length = %lu\n",count, list_time->length);		
 	}
 }
 
@@ -85,6 +85,8 @@ void send_protocol_list_from_file(int pipe_to_control)
 	if(lseek(fd,0,SEEK_SET) < 0)
 	{
 		perror("(collector) fseek error: ");
+        close(fd);
+        return;
 	}
 
     if(read(fd, &size_list, sizeof(uint32)) == 0)
@@ -92,12 +94,15 @@ void send_protocol_list_from_file(int pipe_to_control)
     	if(write(fd, &size_list, sizeof(uint32)) != sizeof(uint32))
     	{
     		perror("(collector) write error: ");
+            close(fd);
+            return;
     	}
     }
-    printf("SIZE TO SEND %d \n", size_list);
+    printf("(collector) SIZE TO SEND %d \n", size_list);
     if(write(pipe_to_control,&size_list, sizeof(uint32)) != sizeof(uint32)) /*Number of items*/
     {
         perror("(collector) getProtocolList, failed to send state");
+        close(fd);
         return;
     }
 
@@ -123,7 +128,6 @@ int main(int argc, char *argv[])
 	int buffer_int[2]; /* Read buffer command, buffer_in[0] -> COMMAND, buffer_in[0] -> VALUE */
 	collector_entry buffer_entry; /* Read buffer */
 	int max_entries = INIT_ENTRIES; /* Init */
-	int time_out = INIT_TIMEOUT; /* Init */
 	DLinkedList *list = NULL; /* Empty list */
 	DLinkedList *list_time = NULL; /* Empty list ordered by time */
 	
@@ -133,7 +137,7 @@ int main(int argc, char *argv[])
     
     if(argc < 4)
     {
-        fprintf(stderr,"need at least 3 arg : PIPE_FROM_COLLECTOR PIPE_FROM_CONTROL PIPE_TO_CONTROL [ARGS ...]\n");
+        fprintf(stderr,"(collector) need at least 3 arg : PIPE_FROM_COLLECTOR PIPE_FROM_CONTROL PIPE_TO_CONTROL [ARGS ...]\n");
         return EXIT_FAILURE;
     }
     
@@ -186,7 +190,7 @@ int main(int argc, char *argv[])
 		{		
 			nb_b = read(from_dispatcher, &buffer_entry, sizeof(collector_entry));
 			if(nb_b > 0)
-				update_list_entries(list, list_time, buffer_entry, max_entries, time_out);
+				update_list_entries(list, list_time, buffer_entry, max_entries);
 			else
 			{
 				fprintf(stderr,"(collector) Reading error from dispatcher \n");

@@ -11,10 +11,10 @@ int sendRequest(int pipe);
 
 int main(int argc, char *argv[])
 {
-    char arg1[10], arg2[10];
-    int s, pipes[2], i;
+    char arg1[10], arg2[10], arg3[10], arg4[10];
+    int s, pipes[2], pipes2[2], i;
     struct sockaddr_in sockaddr_server;
-    
+        
     srandomdev();
     
     /*init socket*/
@@ -38,16 +38,26 @@ int main(int argc, char *argv[])
     
     if(pipe(pipes)<0)
     {
-        perror("failed to pipe");
+        perror("failed to pipe (1)");
+        return -1;
+    }
+    
+    if(pipe(pipes2)<0)
+    {
+        perror("failed to pipe (2)");
         return -1;
     }
     
     /*start wait*/
     if(fork()==0)
     {
+        close(pipes[1]);
         sprintf(arg1,"%d",s);
         sprintf(arg2,"%d",pipes[0]);
-        if( execlp("./wait","wait", arg1, arg2, (char *)0) < 0)
+        sprintf(arg3,"%d",pipes2[0]);
+        sprintf(arg4,"%u",173);
+        
+        if( execlp("./wait","wait", arg1, arg2,"1",arg3,arg4, (char *)0) < 0)
         {
             perror("(dispatch) manage_command,failed to execlp wait");
             exit(EXIT_FAILURE);
@@ -57,7 +67,7 @@ int main(int argc, char *argv[])
     
     /*send request*/
     printf("send request\n");
-    for(i =  0;i< 50000;i++)
+    for(i =  0;i< 1000;i++)
     {
         /*printf("write\n");*/
         if(sendRequest(pipes[1]) < 0)
@@ -65,9 +75,9 @@ int main(int argc, char *argv[])
             fprintf(stderr,"send request error\n");
             return -1;
         }
-        usleep(2000);
+        usleep(100000);
     }
-    close(pipes[0]);
+    close(pipes[1]);
     close(s);
     return 0;
 }

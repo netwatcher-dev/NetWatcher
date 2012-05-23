@@ -145,6 +145,7 @@ DLinkedList *dlinkedlist_add_insert(DLinkedList *list, void* e, int pos)
 						list->length += 1;
 					}
 				}
+                break;
 			}
 			else
 			{
@@ -202,8 +203,15 @@ DLinkedList* dlinkedlist_remove_node(DLinkedList *list, struct node *n_node)
     {
 		if(n_node->next == NULL)
 		{
-			list->tail = n_node->prev;
-			list->tail->next = NULL;
+		    if(n_node->prev == NULL)
+		    {
+                list->tail = list->head = NULL;
+		    }
+		    else
+		    {
+		        list->tail = n_node->prev;
+    			list->tail->next = NULL;
+		    }
 		}
 		else if(n_node->prev == NULL)
 		{
@@ -314,6 +322,7 @@ int dump(DLinkedList *list, DLinkedList *list_time)
     	if(write(fd, &tmp_size, sizeof(uint32)) != sizeof(uint32))
     	{
     		perror("(collector) write error: ");
+            close(fd);
     		return EXIT_FAILURE;
     	}
     }
@@ -342,10 +351,15 @@ int dump(DLinkedList *list, DLinkedList *list_time)
 							if(lseek(fd,-size_entry_file,SEEK_CUR) < 0)
 							{
 								perror("(collector) fseek error: ");
+                                close(fd);
+                                return EXIT_FAILURE;
 							}
 							if(write(fd ,&file_entry, size_entry_file) != size_entry_file)
-							{
+							{   
 								printf("Error on writing \n");
+                                close(fd);
+                                return EXIT_FAILURE;
+                                
 							}
 							/*printf("UPDATED !!!!!! \n");*/
 							proto_tmp->updated = 1; /* Mark as Updated in the file */
@@ -392,6 +406,8 @@ int dump(DLinkedList *list, DLinkedList *list_time)
 				if(write(fd ,&file_entry, size_entry_file) != size_entry_file)
 				{
 					perror("(collector) write error: \n");
+                    close(fd);
+                    return EXIT_FAILURE;
 				}
 				tmp_size++;
 			}
@@ -412,7 +428,7 @@ int dump(DLinkedList *list, DLinkedList *list_time)
 		perror("(collector) fseek error: ");
 	}
 
-	if(write(fd, &tmp_size, sizeof(uint8)) != sizeof(uint8))
+	if(write(fd, &tmp_size, sizeof(uint32)) != sizeof(uint32))
 	{
 		perror("(collector) write error: \n");
 	}
@@ -471,7 +487,7 @@ struct struct_proto* create_proto(collector_entry new_item)
 	return proto;
 }
 
-void update_list_entries(DLinkedList *list, DLinkedList *list_time, collector_entry new_item, int max_entries, int syn)
+void update_list_entries(DLinkedList *list, DLinkedList *list_time, collector_entry new_item, int max_entries)
 {
 	struct_ip * item = calloc(1,sizeof(struct_ip));
 	struct node *n_temp = NULL;

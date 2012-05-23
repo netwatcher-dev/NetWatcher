@@ -1,14 +1,6 @@
 #ifndef _CAPTUREFILTERLIB_H
 #define _CAPTUREFILTERLIB_H
 
-/*TODO
-    -faire une stack de taille dynamique
-        il suffit de garder le nombre de breakpoint consecutif max possible
-        et lors d'une insertion, on compte le nombre de breakpoint consecutif max pouvant arriver
-            pas vraiment possible sans essayer tous les chemins :/
-
-*/
-
 #ifdef __gnu_linux__
 
 #define _BSD_SOURCE
@@ -17,12 +9,12 @@
 #endif
 
 #include "../core_type.h"
+#include "../wait_communication.h"
 #include <sys/socket.h>
 #include <unistd.h>
 #include <pcap/pcap.h>
 #include <arpa/inet.h>
 #include <pcap.h>
-#include "../structlib/structlib.h"
 
 #ifndef LBL_ALIGN
 #ifndef WIN32
@@ -43,13 +35,6 @@
 		 (uint32)*((u_char *)p+3)<<0)
 #endif
 
-#define compare_filter(a, b)       ((a->instruct.code == b->instruct.code) && (a->instruct.k == b->instruct.k))
-
-extern struct master_filter master_filter;
-extern datalink_info link_info;
-
-#define MAX_FILTER_LEVEL 10
-
 struct filter_node
 {
     struct filter_item * item;
@@ -60,12 +45,22 @@ struct filter_item
 {
     u_short	code;
     uint32 k;
-        
+      
     struct filter_node * next_child_t; /*liste chainée des enfants*/
         /*Dans le cas d'une instruction NON CONDITIONNELLE, le next_child_t contiendra l'instruction suivante*/
         /*Dans le cas d'une instruction TERMINALE, le next_child_t contiendra les parents a partir du second*/
-    struct filter_node * next_child_f; /*liste chainée des enfants*/
-    struct filter_item * parent;
+    struct filter_node * next_child_f; /*liste chainée des enfants pour un noeud NON CONDITIONNELLE uniquement*/
+    struct filter_item * parent; /*contient uniquement un et un seul parent*/
+        /*Dans le cas d'une instruction NON CONDITIONNELLE, le parent contiendra l'unique parent*/
+        /*Dans le cas d'une instruction TERMINALE, le parent contiendra le premier parent*/
+};
+
+struct filter_end_node
+{
+    struct filter_node * next_end_node;
+    int control_pipe;
+    int port_id;
+    struct filter_end_node * next;
 };
 
 struct breakpoint
@@ -79,17 +74,41 @@ struct breakpoint
 struct master_filter
 {
     struct filter_node * filter_first_node;
+    struct filter_end_node * end_node;
     
-    struct breakpoint breakpoint_stack[MAX_FILTER_LEVEL];
+    struct breakpoint * breakpoint_stack;
     int current_breakpoint;
+    unsigned int max_filter_level_count;
 };
 
+struct flatten_item
+{
+    int bf_instruct_link;
+    int true_instruct;
+    int false_instruct;
+};
+
+
+struct master_filter master_filter;
+extern datalink_info link_info;
+
 void initFilter();
-int addFilter(const char * filter_string, int filter_id, int pipe);
+int addFilter(const char * filter_string, int filter_id, int pipe, int control_pipe);
 int removeFilter(int end_node_id);
 void removeAllFilter();
 int sendToAllNode(register const u_char *p,unsigned int buflen, struct timeval ts);
+
+void flattenGraphTraversal(struct flatten_item * graph, struct bpf_program * filter, int indice, int level);
 void traversal();
-void innerTraversal(struct filter_item * i, int level);
+void innerTraversal(const char * pre,struct filter_item * i, int level);
+
+int capture_setFileMode();
+int capture_setSpeed(uint8 speed);
+int capture_pause();
+int capture_resume();
+int capture_flush();
+int capture_kill();
+
+char * filter_item_image(const struct filter_item * p);
 
 #endif

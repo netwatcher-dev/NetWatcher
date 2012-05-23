@@ -12,113 +12,66 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <ifaddrs.h>
+#include <pcap.h>
 
 #include "../core_type.h"
 #include "../segmentlib/segmentlib.h"
-/*#include "../capturefilterlib/capturefilterlib.h"*/
 
-#define HL_IP6 40
-/* Ethernet addresses are 6 bytes */
-#define ETHER_ADDR_LEN	6
+#define DATALINK_MANAGED 3
+#define NETWORK_MANAGED 3
+#define TRANSPORT_MANAGED 3
 
 extern datalink_info link_info;
 
-	/* Ethernet header */
-typedef struct  
+typedef struct
 {
-		uint8  ether_dhost[ETHER_ADDR_LEN]; /* Destination host address */
-		uint8  ether_shost[ETHER_ADDR_LEN]; /* Source host address */
-		uint16 ether_type; /* IP? ARP? RARP? etc */
-} sniff_ethernet;
-
-#define ETHERNET_TYPE_IP 0x0800
-#define ETHERNET_TYPE_IP6 0x86DD
-
-/* IP header */
-typedef struct 
-{
-		uint8 ip_vhl;		/* version << 4 | header length >> 2 */
-		uint8 ip_tos;		/* type of service */
-		uint16 ip_len;		/* total length */
-		uint16 ip_id;		/* identification */
-		uint16 ip_off;		/* fragment offset field */
-		uint8 ip_ttl;		/* time to live */
-		uint8 ip_p;		/* protocol */
-		uint16 ip_sum;		/* checksum */
-		struct in_addr ip_src,ip_dst; /* source and dest address */
-} sniff_ip;
-
-/* IP header V6 */
-typedef struct 
-{
-		uint32 ip_v_tc_fl;		/* version (4bits), traffic class (8bits), flow label (20bits) */
-		uint16 ip_len;		/* total length */
-		uint8 ip_p;		/* protocol (next header)*/
-		uint8 ip_hl;		/* hop limit */
-		struct in6_addr ip_src,ip_dst; /* source and dest address */
-} sniff_ip6;
+    int datalink_type;
+    int header_size;
+    int frame_payload_max_size;
+    int footer;
+    int (*check)(const uint8 * datas, int data_length, int * encapslated_protocol);
+} datalink_check;
 
 typedef struct
 {
-    uint32 ip_source; /* Adresse ip source */
-    uint32 ip_destination; /* Adresse ip destination */
-    uint8 mbz; /* Champs à 0 */
-    uint8 type; /* Type de protocole (6->TCP et 17->UDP) */
-    uint16 length; /* htons( Taille de l'entete Pseudo + Entete TCP ou UDP + Data ) */
-} pseudo_entete_ip;
+    int protocol_type;
+    int (*check)(const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
+} transport_check;
 
-#define IP_RF 0x8000		/* reserved fragment flag */
-#define IP_DF 0x4000		/* dont fragment flag */
-#define IP_MF 0x2000		/* more fragments flag */
-#define IP_OFFMASK 0x1fff	/* mask for fragmenting bits */	
-#define IP4_HL(ip)		(((ip)->ip_vhl) & 0x0f)
-#define IP4_V(ip)		(((ip)->ip_vhl) >> 4)
+typedef struct
+{
+    int protocol_type;
+    int (*check)(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned int * network_size, int * encapslated_protocol, int * local_address, collector_entry * entry);
+    transport_check transport[TRANSPORT_MANAGED];
+} network_check;
 
-#define IP_TYPE_TCP 0x06
-#define IP_TYPE_UDP 0x11
+/*DATALINK CHECKER*/
+int checkETHERNET        (const uint8 * datas, int data_length, int * encapslated_protocol);
+int checkIEEE80211       (const uint8 * datas, int data_length, int * encapslated_protocol);
+int checkDatalinkDefault (const uint8 * datas, int data_length, int * encapslated_protocol);
 
-	/* TCP header */
-typedef struct {
-		uint16 th_sport;	/* source port */
-		uint16 th_dport;	/* destination port */
-		uint32 th_seq;		/* sequence number */
-		uint32 th_ack;		/* acknowledgement number */
+/*NETWORK CHECKER*/
+int checkIPV4               (const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned int * network_size, int * encapslated_protocol, int * local_address, collector_entry * entry);
+int checkIPV6               (const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned int * network_size, int * encapslated_protocol, int * local_address, collector_entry * entry);
+int checkNetworklinkDefault (const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned int * network_size, int * encapslated_protocol, int * local_address, collector_entry * entry);
 
-		uint8 th_offx2;	/* data offset, rsvd */
-	
-		uint8 th_flags;
-		uint16 th_win;		/* window */
-		uint16 th_sum;		/* checksum */
-		uint16 th_urp;		/* urgent pointer */
-} sniff_tcp;
+/*TRANSPORT CHECKER*/
+int checkTCP                  (const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
+int checkTCP_ipv6             (const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
+int checkUDP                  (const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
+int checkUDP_ipv6             (const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
+int checkTransportlinkDefault (const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_source, collector_entry * entry);
 
-	/* UDP header */
-typedef struct {
-		uint16 uh_sport;	/* source port */
-		uint16 uh_dport;	/* destination port */
-		uint16 uh_len;	/* source port */
-		uint16 uh_sum;	/* destination port */
-		
-} sniff_udp;
-#define TH_OFF(th)	(((th)->th_offx2 & 0xf0) >> 4)
-#define TH_FIN 0x01
-#define TH_SYN 0x02
-#define TH_RST 0x04
-#define TH_PUSH 0x08
-#define TH_ACK 0x10
-#define TH_URG 0x20
-#define TH_ECE 0x40
-#define TH_CWR 0x80
-#define TH_FLAGS (TH_FIN|TH_SYN|TH_RST|TH_ACK|TH_URG|TH_ECE|TH_CWR)
-
-int checkETHERNET(sniff_ethernet * header_ethernet, const uint8 * datas, int data_length);
-int checkIPV4(sniff_ip * header_ip, const uint8 * datas, int data_length,struct ifaddrs *ifp);
-int checkTCP(sniff_tcp * header_tcp, const uint8 * datas, int data_length, sniff_ip * header_ip, int local_source);
-int checkUDP(sniff_ip * header_ip, uint16 * packet, int local_source);
-
+/*CHECKSUM CHECKER*/
 uint16 cksum(uint32 sum,uint16 *ip, int len);
 uint16 cksum2(uint32 sum, uint8 *bytes, int len);
 
-/*TODO move all check function from dispatch to here*/
+/*DEBUG PRINT FUNCTION*/
+void printEthernetType(uint16 type);
+void printIpType(uint8 type);
+void printIPV6(struct in6_addr * ip);
+
+datalink_check datalink_check_function_plop[DATALINK_MANAGED];
+network_check network_check_function[NETWORK_MANAGED] ;
 
 #endif

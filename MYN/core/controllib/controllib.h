@@ -26,7 +26,6 @@
 
 #include "../collectorlib/collectorlib.h"
 #include "../utillib/utillib.h"
-#include "../capturefilterlib/capturefilterlib.h"
 #include "../sharedmemorylib/sharedmemorylib.h"
 
 char errbuf[PCAP_ERRBUF_SIZE];
@@ -49,13 +48,13 @@ typedef struct
 
 extern int from_collector, to_collector, dispatch_id;
 extern mymemory * mem;
-
+char * file_path;
 
 int sendEntries(int socket);
 int getProtocolList(int socket);
 int clearProtocolList(int socket);
 int setLengthProtocolList(int socket);
-int selectCaptureDevice(int socket);
+int selectCaptureDevice(int socket, int command);
 /*int disableCaptureDevice(int socket);*/
 int selectCaptureFile(int socket);
 int setSpeed(int socket);
@@ -74,5 +73,10 @@ int directTransmit(int socket, int command);
 
 int sendCommandToDispatch(int command, int argc_set, int argc_get, ...);
 
+int file_goto(int descriptor);
+
+int get_state(int socket);
+
+int disable_device(int socket);
 
 #endif

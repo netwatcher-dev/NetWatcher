@@ -6,33 +6,56 @@
 #include <sys/time.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <math.h>
+#include <errno.h>
 #include "../core_type.h"
 
-extern uint8 delay_factor;
+#define DELAYED_PACKET_IN_FILE_LIMIT 2000 /*it will be a non sense to set a smallest limit here than the memory limit*/
+#define DELAYED_MAX_FILE_COUNT 50
+#define DELAYED_MAX_PACKET_IN_MEMORY 500
+#define DELAYED_THRESHOLD 10000 /*en microseconde*/
 
-#define DELAYED_BUFFER_SIZE 1024
+#define DELAYED_FLAG_INIT            1
+#define DELAYED_FLAG_PAUSE           2
+#define DELAYED_FLAG_ENABLE          4
+#define DELAYED_FLAG_DATA_ON_FILE    8
+#define DELAYED_FLAG_DONT_DELAY_NEXT 16
 
-typedef struct temporal_packet
+typedef struct time_packet
 {
     struct timeval T;
-    struct temporal_packet * next;
+    struct time_packet * next; /*next in time*/
     unsigned int size;
     uint8 * datas;
-    
-}temporal_packet;
+}time_packet;
 
 /*
 time_t         tv_sec      seconds
-suseconds_t    tv_usec     microseconds
+suseconds_t    tv_usec     microseconds 1 seconds = 1.000.000 microseconds
 */
-struct timeval T, Tprime, ref;
-temporal_packet * head_buffered_packet, * queue_buffered_packet;
 
-uint8 buffer[DELAYED_BUFFER_SIZE];
+/*DELAY SYSTEM VARS*/
+struct timeval T, Tprime, ref_system, ref_packet;
+time_packet * head_buffered_packet_input, * queue_buffered_packet_input,* head_buffered_packet_output, * queue_buffered_packet_output;
+uint8 delay_factor, delay_flags;
 
-int delay_init(struct timeval * first);
-int needToDelay(struct timeval * packet_time_T, struct timeval * reference_time);
-int delayPaquet(int pipe, unsigned int size, struct timeval ts);
-int sendDelayedPacket(int socket, int dontsend, struct timeval * reference_time);
+/*DELAY FILE VAR*/
+unsigned int file_count, packet_in_last_file, last_file_id,input_buffer_size,packet_read_from_last_file, input_offset;
+unsigned int output_offset;
+unsigned int output_buffer_size; /*debug vars*/
+int input_file_descriptor, output_file_descriptor;
+
+void setDelay(sint8 value);
+void delay_init();
+int delay_updateTime();
+int delay_needToDelay(struct timeval * packet_time_T);
+time_packet * delay_allocateTemporalPaquet(unsigned int size,struct timeval * t);
+int delay_sendDelayedPacket(int socket, int * send_the_paquet);
+void delay_flush();
+
+int bufferToFile(time_packet * from, int limit);
+int fileToBuffer();
 
 #endif

@@ -1,0 +1,11 @@
+#ifndef _WAIT_COMMUNICATION_H
+#define _WAIT_COMMUNICATION_H
+
+#define PAUSE_EVENT 0
+#define RESUME_EVENT 1
+#define DELAY_PARAM 2
+#define DISABLE_BUFFER 3
+#define FLUSH_EVENT 4
+#define KILL_YOU 5
+
+#endif

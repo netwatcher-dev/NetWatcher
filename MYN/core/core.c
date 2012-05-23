@@ -17,9 +17,9 @@
 #define SHMKEY 25279
 #define SEMKEY 97252
 
-int control(int write_to_core,int read_from_core);
+/*int control(int write_to_core,int read_from_core);
 int core(int write_to_control,int read_from_control, int write_to_collector);
-int collector(int read_from_control);
+int collector(int read_from_control);*/
 
 int main(int argc, char *argv[])
 {

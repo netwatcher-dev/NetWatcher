@@ -10,15 +10,17 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <inttypes.h>
+
 #include "./utillib/utillib.h"
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-
 #include "command.h"
+
+#include <inttypes.h>
+#include <limits.h>
+#include <sys/types.h>
 
 int shell(int socket);
 int execute(int socket, int argc,char * argv[]);
@@ -26,6 +28,7 @@ int getStringList(int socket, sint8 command);
 int sendOrder(int socket, sint8 command);
 int sendCommandWithString(int socket, sint8 command, const char * string);
 int sendCommandWithString2(int socket, sint8 command, int argc,char * argv[]);
+int sendTwoUINT32(int socket, sint8 command, uint32 int1, uint32 int2);
 void usage();
 
 int setSpeed(int socket, uint8 value);
@@ -56,7 +59,7 @@ int main(int argc, char *argv[])
     }
     
     port = (int)strtol(argv[2],(char **)NULL,10);
-    if(errno == ERANGE || port == 0 || port <1 || port > 65532)
+    if(errno == ERANGE || errno == EINVAL || port == 0 || port <1 || port > 65532)
     {
         fprintf(stderr,"invalid port number : %s\n",argv[2]);
         return EXIT_FAILURE;
@@ -122,6 +125,8 @@ int execute(int socket, int argc,char * argv[])
     uint32 id;
     uint16 port;
     
+    uint32 secs,micro_secs;
+    
     if(strcmp("help", argv[0]) == 0)
     {
         usage();        
@@ -145,6 +150,17 @@ int execute(int socket, int argc,char * argv[])
         }
         
         return sendCommandWithString(socket, COMMAND_SELECT_CAPTURE_DEVICE, argv[1]);
+    }
+    else if(strcmp("dsetm", argv[0]) == 0) /*device set*/
+    {  
+        if(argc < 2)
+        {
+            fprintf(stderr,"need at least 1 more arg : DEVICE_NAME\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        return sendCommandWithString(socket, COMMAND_SELECT_CAPTURE_DEVICE_WITH_MONITORING, argv[1]);
     }
     else if(strcmp("fset", argv[0]) == 0) /*file set*/
     {  
@@ -180,6 +196,76 @@ int execute(int socket, int argc,char * argv[])
     {
         return sendOrder(socket,COMMAND_PARSE_FILE);
     }
+    else if(strcmp("fread", argv[0]) == 0) /*stop all capture*/
+    {
+        return sendOrder(socket,COMMAND_FILE_READ);
+    }
+    else if(strcmp("info", argv[0]) == 0) /*stop all capture*/
+    {
+        return sendOrder(socket,COMMAND_GET_STATE);
+    }
+    else if(strcmp("fgoto", argv[0]) == 0) /*goto timestamp in file*/
+    {
+        /*COMMAND_FILE_GOTO*/
+        if(argc < 3)
+        {
+            fprintf(stderr,"need 2 more arg : SECONDS MICROSECONDS\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        if(strlen(argv[1]) > 10 || strlen(argv[1]) <1)
+        {
+            fprintf(stderr,"SECONDS must be between 0 and 4 294 967 295\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        secs = strtol(argv[1],NULL,10);
+        
+        if(errno == ERANGE || errno == EINVAL)
+        {
+            fprintf(stderr,"failed to convert seconds, SECONDS must be between 0 and 4 294 967 295\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        if(strlen(argv[2]) > 6 || strlen(argv[2]) <1)
+        {
+            fprintf(stderr,"MICROSECONDS must be between 0 and 999 999\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        micro_secs = strtol(argv[2],NULL,10);
+        
+        if(errno == ERANGE || errno == EINVAL)
+        {
+            fprintf(stderr,"failed to convert microseconds, MICROSECONDS must be between 0 and 999 999\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        
+        if( ! (micro_secs >= 0 && micro_secs <= 999999) )
+        {
+            fprintf(stderr,"MICROSECONDS must be between 0 and 999 999\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
+        printf("%u, %u\n",secs,micro_secs);
+        
+        return sendTwoUINT32(socket, COMMAND_FILE_GOTO, htonl(secs), htonl(micro_secs));
+    }
+    else if(strcmp("pause", argv[0]) == 0) /*stop all capture*/
+    {
+        return sendOrder(socket,COMMAND_STREAM_PAUSE);
+    }
+    else if(strcmp("resume", argv[0]) == 0) /*stop all capture*/
+    {
+        return sendOrder(socket,COMMAND_STREAM_RESUME);
+    }
     else if(strcmp("dstop", argv[0]) == 0) /*disable capture device*/
     {
         return sendOrder(socket,COMMAND_DISABLE_CAPTURE_DEVICE);
@@ -202,6 +288,13 @@ int execute(int socket, int argc,char * argv[])
         
         speed1 = strtol(argv[1],NULL,10);
         
+        if(errno == ERANGE || errno == EINVAL)
+        {
+            fprintf(stderr,"failed to convert port id, ID must be between 1 and 65532\n");
+            usage();
+            return EXIT_FAILURE;
+        }
+        
         if(speed1 < -127 || speed1 > 127)
         {
             fprintf(stderr,"SPEED must be between -127 and 127\n");
@@ -210,12 +303,9 @@ int execute(int socket, int argc,char * argv[])
         }
         
         speed2 = 0;
-        if (speed1 > 0)
+        if (speed1 < 0)
         {
             speed2 |= 0x80;
-        }
-        else
-        {
             speed1 *= -1;
         }
         
@@ -246,7 +336,7 @@ int execute(int socket, int argc,char * argv[])
         if(speed1 == 0)
         {
             /*receive the port number*/
-            if( (speed1=recv(socket, &port, sizeof(uint16),0)) != sizeof(uint16))
+            if( (speed1=recv(socket, &port, sizeof(uint16),MSG_WAITALL)) != sizeof(uint16))
             {
                 if(speed1 == 0)
                 {
@@ -289,7 +379,7 @@ int execute(int socket, int argc,char * argv[])
         }
         id = strtol(argv[1],NULL,10);
         
-        if(errno == ERANGE)
+        if(errno == ERANGE || errno == EINVAL)
         {
             fprintf(stderr,"failed to convert port id, ID must be between 1 and 65532\n");
             usage();
@@ -320,17 +410,6 @@ int execute(int socket, int argc,char * argv[])
         
         return setLengthProtocolList(socket, (sint16)atoi(argv[1]));
     }
-    else if(strcmp("plength", argv[0]) == 0) /*maximum length for protocol list*/
-    {
-        if(argc < 2)
-        {
-            fprintf(stderr,"need at least 1 more arg : SIZE (number of elements)\n");
-            usage();
-            return EXIT_FAILURE;
-        }
-        
-        return sendCommandWithString(socket,COMMAND_START_RECORD, argv[1]);
-    }
     else
     {
         /*unknown*/
@@ -341,8 +420,8 @@ int execute(int socket, int argc,char * argv[])
 
 int shell(int socket)
 {
-    char * cmd = NULL, *cmd2;
-    char **ap, *argv[10];
+    char cmd[1024], *cmd2, *cmd_tmp = NULL;
+    char **ap, *argv[100];
     int ret, count = 0;
     
     while(1)
@@ -354,25 +433,27 @@ int shell(int socket)
             return EXIT_FAILURE;
         }*/
         
-        cmd = readline("M.Y.N control:>");
-
-        if(cmd == NULL)
+        cmd_tmp = readline("M.Y.N control:>");
+        
+        if(cmd_tmp == NULL)
         {
             return 0;
         }
 
-        if(strlen(cmd) < 1)
+        if(strlen(cmd_tmp) < 1)
         {
             continue;
         }
         
         /*cmd[strlen(cmd)-1]='\0';*/
-        add_history(cmd);
+        add_history(cmd_tmp);
         
-        if(strcmp(cmd,"exit") == 0)
+        if(strcmp(cmd_tmp,"exit") == 0)
         {
             return EXIT_SUCCESS;
         }
+        
+        strcpy(cmd,cmd_tmp);
         
         cmd2 = cmd;
         count = 0;
@@ -380,7 +461,7 @@ int shell(int socket)
         {
             if (**ap != '\0' && *ap != NULL)
             {
-                if (++ap >= &argv[10])
+                if (++ap >= &argv[100])
                 {
                     break;
                 }
@@ -409,7 +490,7 @@ int sendOrder(int socket, sint8 command)
         return EXIT_FAILURE;
     }
     
-    if(  (size = recv(socket, &resp, sizeof(sint32),0)) != sizeof(sint32))
+    if(  (size = recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
     {
         if(size == 0)
         {
@@ -425,6 +506,67 @@ int sendOrder(int socket, sint8 command)
     checkResp(ntohl(resp));
     
     return 0;
+}
+
+int getState(int socket, struct core_state * state, char ** file_path)
+{
+    if(recv(socket,&state->state, sizeof(state->state), MSG_WAITALL) != sizeof(state->state))
+    {
+        perror("(controllib) get_state, failed to send state");
+        return EXIT_FAILURE;
+    }
+    state->state = ntohl(state->state);
+    
+    if(recv(socket,&state->packet_readed, sizeof(state->packet_readed), MSG_WAITALL) != sizeof(state->packet_readed))
+    {
+        perror("(controllib) get_state, failed to send packet_readed");
+        return EXIT_FAILURE;
+    }
+    state->packet_readed = ntohl(state->packet_readed);
+    
+    if(recv(socket,&state->packet_in_file, sizeof(state->packet_in_file), MSG_WAITALL) != sizeof(state->packet_in_file))
+    {
+        perror("(controllib) get_state, failed to send packet_in_file");
+        return EXIT_FAILURE;
+    }
+    state->packet_in_file = ntohl(state->packet_in_file);
+    
+    if(recv(socket,&state->file_current.tv_sec, sizeof(state->file_current.tv_sec), MSG_WAITALL) != sizeof(state->file_current.tv_sec))
+    {
+        perror("(controllib) get_state, failed to send file_current.tv_sec");
+        return EXIT_FAILURE;
+    }
+    state->file_current.tv_sec = ntohll(state->file_current.tv_sec);
+    
+    if(recv(socket,&state->file_current.tv_usec, sizeof(state->file_current.tv_usec), MSG_WAITALL) != sizeof(state->file_current.tv_usec))
+    {
+        perror("(controllib) get_state, failed to send file_current.tv_usec");
+        return EXIT_FAILURE;
+    }
+    state->file_current.tv_usec = ntohll(state->file_current.tv_usec);
+    
+    if(recv(socket,&state->file_duration.tv_sec, sizeof(state->file_duration.tv_sec), MSG_WAITALL) != sizeof(state->file_duration.tv_sec))
+    {
+        perror("(controllib) get_state, failed to send file_duration.tv_sec");
+        return EXIT_FAILURE;
+    }
+    state->file_duration.tv_sec = ntohll(state->file_duration.tv_sec);
+    
+    if(recv(socket,&state->file_duration.tv_usec, sizeof(state->file_duration.tv_usec), 0) != sizeof(state->file_duration.tv_usec))
+    {
+        perror("(controllib) get_state, failed to send file_duration.tv_usec");
+        return EXIT_FAILURE;
+    }
+    state->file_duration.tv_usec = ntohll(state->file_duration.tv_usec);
+    
+    /*envoyer la source*/
+    if( ((*file_path) = readString(socket)) == NULL)
+    {
+        fprintf(stderr,"(controllib) get_state, failed to send an entry\n");
+        return EXIT_FAILURE;
+    }
+    
+    return EXIT_SUCCESS;
 }
 
 int getStringList(int socket, sint8 command)
@@ -456,10 +598,10 @@ int sendCommandWithString2(int socket, sint8 command, int argc,char * argv[])
 {
     char * tmp;
     int i,size = 0;
-    
+        
     for(i=0;i<argc;i++)
     {
-        size += strlen(argv[i]);
+        size += strlen(argv[i])+1;
     }
     
     if( (tmp = malloc(sizeof(char)*size)) == NULL )
@@ -492,7 +634,7 @@ int sendCommandWithString(int socket, sint8 command, const char * string)
     /*on envoi l'ordre*/
     if( send(socket,&command, sizeof(sint8), 0) < sizeof(sint8))
     {
-        fprintf(stderr,"failed to send order\n");
+        perror("failed to send order");
         return EXIT_FAILURE;
     }
         
@@ -504,7 +646,7 @@ int sendCommandWithString(int socket, sint8 command, const char * string)
     }
     
     /*on recoit la reponse*/
-    if(  (size = recv(socket, &resp, sizeof(sint32),0)) != sizeof(sint32))
+    if(  (size = recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
     {
         if(size == 0)
         {
@@ -538,7 +680,50 @@ int setSpeed(int socket, uint8 value)
         return EXIT_FAILURE;
     }
     
-    if(  (received=recv(socket, &resp, sizeof(sint32),0)) != sizeof(sint32))
+    if(  (received=recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
+    {
+        if(received == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("read failed");
+        }
+        return EXIT_FAILURE;
+    }
+    
+    checkResp(ntohl(resp));
+    
+    return 0;
+}
+
+int sendTwoUINT32(int socket, sint8 command, uint32 int1, uint32 int2)
+{
+    int received;
+    sint32 resp;
+    
+    printf("%u, %u\n",int1,int2);
+    
+    if( send(socket,&command, sizeof(sint8), 0) < sizeof(sint8))
+    {
+        fprintf(stderr,"failed to send order\n");
+        return EXIT_FAILURE;
+    }
+    
+    if( send(socket,&int1, sizeof(int1), 0) < sizeof(int1))
+    {
+        fprintf(stderr,"failed to send order\n");
+        return EXIT_FAILURE;
+    }
+    
+    if( send(socket,&int2, sizeof(int2), 0) < sizeof(int2))
+    {
+        fprintf(stderr,"failed to send order\n");
+        return EXIT_FAILURE;
+    }
+    
+    if(  (received=recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
     {
         if(received == 0)
         {
@@ -574,7 +759,7 @@ int stopCapture(int socket, uint16 id)
         return EXIT_FAILURE;
     }
     
-    if(  (received=recv(socket, &resp, sizeof(sint32),0)) != sizeof(sint32))
+    if(  (received=recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
     {
         if(received == 0)
         {
@@ -606,7 +791,7 @@ int getProtocolList(int socket)
         return EXIT_FAILURE;
     }
     /* Entries count */
-    if( (received = recv(socket, &nb_entries, sizeof(sint32), 0)) < 0)  /*Size to read */
+    if( (received = recv(socket, &nb_entries, sizeof(sint32), MSG_WAITALL)) < 0)  /*Size to read */
     {
         if(received == 0)
         {
@@ -623,7 +808,7 @@ int getProtocolList(int socket)
     nb_entries = ntohl(nb_entries);
     while((nb_entries--) > 0)
     {
-        if( (received=recv(socket, &entry, (sizeof(collector_entry)-2*sizeof(uint8)),0)) < 0)
+        if( (received=recv(socket, &entry, (sizeof(collector_entry)-2*sizeof(uint8)),MSG_WAITALL)) < 0)
         {
             if(received == 0)
             {
@@ -636,11 +821,12 @@ int getProtocolList(int socket)
             return EXIT_FAILURE;
         }
 
-        printf("[ip.src=%d.%d.%d.%d ip.dst=%d.%d.%d.%d port.dst=%d port.src=%d time=%d ]\n",entry.sip[0],entry.sip[1],entry.sip[2],entry.sip[3],entry.dip[0],entry.dip[1],entry.dip[2],entry.dip[3],ntohs(entry.dport),ntohs(entry.sport),entry.epoch_time);
+        printf("[protocole=%u, ver=%u]",entry.protocol,entry.ver);
+        printf("[ip.src=%d.%d.%d.%d ip.dst=%d.%d.%d.%d port.dst=%d port.src=%d time=%d ]\n",entry.sip[0],entry.sip[1],entry.sip[2],entry.sip[3],entry.dip[0],entry.dip[1],entry.dip[2],entry.dip[3],ntohs(entry.dport),ntohs(entry.sport),ntohl(entry.epoch_time));
 
     }
     /* Response code */
-    if( (received=recv(socket, &resp, sizeof(sint32),0)) != sizeof(sint32))
+    if( (received=recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
     {
         if(received == 0)
         {
@@ -684,7 +870,7 @@ int setLengthProtocolList(int socket, sint16 value)
     }
 
     /* Response code */
-    received = recv(socket, &resp, sizeof(sint32),0);
+    received = recv(socket, &resp, sizeof(sint32),MSG_WAITALL);
     if(received < sizeof(sint32))
     {
         if(received == 0)
@@ -722,10 +908,10 @@ int checkResp(sint32 resp)
         case STATE_SEND_COMMAND_TO_DISPATCH_FAILED : printf("failed to send command to dispatch\n"); break;
         case STATE_NO_FILE_SELECTED : printf("no file selected\n"); break;
         case STATE_ARG_WRONG_OR_MISSING : printf("one argument is wrong or missing\n"); break;
-        case STATE_IP_VER_MUST_BE_DEFINE_FIRST : printf("an ip version must be defined before others arguments\n"); break;
+        /*case STATE_IP_VER_MUST_BE_DEFINE_FIRST : printf("an ip version must be defined before others arguments\n"); break;
         case STATE_CAN_T_MERGE_IP_VER : printf("can't build a filter with ipv4 and ipv6\n"); break;
         case STATE_UNKNOWN_FILTER_PARAM : printf("a parameter key is unknown\n"); break;
-        case STATE_PARAM_CAN_T_APPEAR_TWICE : printf("a argument is used twice\n"); break;
+        case STATE_PARAM_CAN_T_APPEAR_TWICE : printf("a argument is used twice\n"); break;*/
         case STATE_VALUE_POSITIVE_INVALID : printf("value must be positive\n"); break;
         case STATE_WRONG_BPF : printf("wrong bpf filter\n");break;
         case STATE_RECORD_ALREADY_STARTED : printf("a record has already started\n");break;
@@ -733,6 +919,11 @@ int checkResp(sint32 resp)
         case STATE_DATALINK_NOT_MANAGED : printf("this interface use a not managed datalink type\n");break;
         case STATE_NO_MORE_PORT_AVAILABLE : printf("there is no more port available in the server\n");break;
         case STATE_NOT_IMPLEMENTED_YET : printf("this function is not yet implemented\n"); break;
+        case STATE_NOT_RUNNING : printf("the system is not running\n"); break;
+        case STATE_NOT_IN_PAUSE : printf("the system is not in pause\n"); break;
+        case STATE_ZERO_VALUE : printf("zero value is not allowed\n"); break;
+        case STATE_ALREADY_RUNNING : printf("this action is not available while the system is running\n");break;
+        case STATE_INVALID_IDENTIFIER : printf("the identifier is unknown or invalid\n");break;
         
         default : printf("unknwon code %d\n",resp);
     }

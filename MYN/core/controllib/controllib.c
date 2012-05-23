@@ -1,5 +1,7 @@
 #include "controllib.h"
 
+char * file_path = NULL;
+
 int sendEntries(int socket)
 {
     pcap_if_t * alldevsp = NULL;
@@ -91,6 +93,7 @@ int getProtocolList(int socket)
             return EXIT_FAILURE;
         }
         
+        entry.epoch_time = htonl(entry.epoch_time);/*il n'y a que ce champ à convertir, les autres le sont deja ou sont des bytes*/
         
         if(send(socket,&entry, (sizeof(collector_entry)-2*sizeof(uint8)), 0) != (sizeof(collector_entry)-2*sizeof(uint8)))
         {
@@ -135,13 +138,14 @@ int clearProtocolList(int socket)
 
 int setLengthProtocolList(int socket)
 {
-    int command;
+    int command, value_int;
     int response;
     short value;
 
-    if(recv(socket,&value,sizeof(short),0) != sizeof(short))
+    if(  (command = recv(socket,&value,sizeof(short),MSG_WAITALL)) != sizeof(short))
     {
-        perror("(controllib) setTimeout, failed to receive value");
+        printf("ret size = %d\n",command);
+        perror("(controllib) setLengthProtocolList, failed to receive value");
         return EXIT_FAILURE;
     }
 
@@ -164,13 +168,14 @@ int setLengthProtocolList(int socket)
     command = COMMAND_SET_BUFFER_LENGTH_PROTO_LIST;
     if(write(to_collector,&command, sizeof(command)) != sizeof(command))
     {
-        perror("(controllib) setTimeoutProtocolList, failed to send command:");
+        perror("(controllib) setLengthProtocolList, failed to send command:");
         return EXIT_FAILURE;
     }
 
     /* Sending value */
     value = ntohs(value);
-    if(write(to_collector,&value, sizeof(value)) != sizeof(value))
+    value_int = value;
+    if(write(to_collector,&value_int, sizeof(value_int)) != sizeof(value_int))
     {
         perror("(controllib) setTimeoutProtocolList, failed to send value:");
         return EXIT_FAILURE;
@@ -179,7 +184,7 @@ int setLengthProtocolList(int socket)
     return EXIT_SUCCESS;
 }
 
-int selectCaptureDevice(int socket)
+int selectCaptureDevice(int socket, int command)
 {
     pcap_if_t * alldevsp= NULL;
     pcap_if_t * next;
@@ -233,7 +238,7 @@ int selectCaptureDevice(int socket)
         arg.values = string;
         arg.size = strlen(string)+1;
         arg.type = ARG_SET;
-        if( (response = sendCommandToDispatch(COMMAND_SELECT_CAPTURE_DEVICE,1, 0,arg)) < 0)
+        if( (response = sendCommandToDispatch(command,1, 0,arg)) < 0)
         {
             fprintf(stderr,"(controllib) selectCaptureDevice, failed to send command to dispatch\n");
             response = htonl(STATE_SEND_COMMAND_TO_DISPATCH_FAILED);
@@ -243,7 +248,8 @@ int selectCaptureDevice(int socket)
         }
 
         printf("(controllib) selected device : %s\n",string);
-        free(string);
+        file_path = string;
+        /*free(string);*/
 
         response = htonl(response);
     }
@@ -308,7 +314,8 @@ int selectCaptureFile(int socket)
     
     
         printf("(controllib) selected file : %s\n",string2);
-        free(string2);
+        file_path = string2;
+        /*free(string2);*/
     
         response = htonl(response);
     }
@@ -326,26 +333,26 @@ int selectCaptureFile(int socket)
 int setSpeed(int socket)
 {
     uint8 value;
-    int response;
+    int response = STATE_NO_ERROR;
     my_args arg;
     
     printf("(controllib) set speed in function\n");
     
-    if(recv(socket,&value,sizeof(value),0) != sizeof(value))
+    if(recv(socket,&value,sizeof(value),MSG_WAITALL) != sizeof(value))
     {
         perror("(controllib) setSpeed, failed to receive value");
         return EXIT_FAILURE;
     }
     
-    if( (value & 0x80) > 0)
-    {
-        printf("(controllib) faster : %u\n",(value&0x7F));
-    }
-    else
+    if( (value & 0x80) )
     {
         printf("(controllib) slower : %u\n",(value&0x7F));
     }
-    
+    else
+    {
+        printf("(controllib) faster : %u\n",(value&0x7F));
+    }
+
     /*envoi de la commande au dispatch*/
     arg.values = &value;
     arg.size = sizeof(uint8);
@@ -358,7 +365,7 @@ int setSpeed(int socket)
         send(socket,&response, sizeof(response), 0);
         return EXIT_FAILURE;
     }
-    
+
     response = htonl(response);
     if(send(socket,&response, sizeof(response), 0) != sizeof(response))
     {
@@ -371,7 +378,7 @@ int setSpeed(int socket)
 
 int stopCapture(int socket)
 {
-    int response = STATE_NOT_IMPLEMENTED_YET/*STATE_NO_ERROR*/;
+    int response = STATE_NO_ERROR;
     uint16 id;
     my_args arg;
     
@@ -384,18 +391,18 @@ int stopCapture(int socket)
     
     id = ntohs(id);
     
-    /*envoi de la commande au dispatch
+    /*envoi de la commande au dispatch*/
     arg.values = &id;
     arg.size = sizeof(id);
     arg.type = ARG_SET;
     if( (response = sendCommandToDispatch(COMMAND_STOP_CAPTURE,1, 0,arg)) < 0)
     {
-        manage error
+        /*manage error*/
         fprintf(stderr,"(controllib) stopCapture, failed to send command to dispatch\n");
         response = htonl(STATE_SEND_COMMAND_TO_DISPATCH_FAILED);
         send(socket,&response, sizeof(response), 0);
         return EXIT_FAILURE;
-    }*/
+    }
     
     printf("(controllib) id to stop : %u\n",id);
     
@@ -658,6 +665,155 @@ int setFilter(int socket, int command)
     return exit_status;
 }
 
+int file_goto(int socket)
+{
+    int response = STATE_NO_ERROR;
+    uint32 secs, microsecs;
+    struct timeval tval;
+    my_args arg;
+    
+    if(recv(socket,&secs,sizeof(secs),MSG_WAITALL) != sizeof(secs))
+    {
+        perror("(controllib) file_goto, failed to receive secs");
+        return EXIT_FAILURE;
+    }
+    
+    if(recv(socket,&microsecs,sizeof(microsecs),MSG_WAITALL) != sizeof(microsecs))
+    {
+        perror("(controllib) file_goto, failed to receive microsecs");
+        return EXIT_FAILURE;
+    }
+    
+    tval.tv_sec = ntohl(secs);
+    tval.tv_usec = ntohl(microsecs);
+        
+    arg.values = &tval;
+    arg.size = sizeof(tval);
+    arg.type = ARG_SET;
+    if( (response = sendCommandToDispatch(COMMAND_FILE_GOTO,1,0,arg)) < 0)
+    {
+        /*manage error*/
+        fprintf(stderr,"(controllib) setSpeed, failed to send command to dispatch\n");
+        response = htonl(STATE_SEND_COMMAND_TO_DISPATCH_FAILED);
+        send(socket,&response, sizeof(response), 0);
+        return EXIT_FAILURE;
+    }
+        
+    response = htonl(response);
+    if(send(socket,&response, sizeof(response), 0) != sizeof(response))
+    {
+        perror("(controllib) setSpeed, failed to send state");
+        return EXIT_FAILURE;
+    }
+    
+    return EXIT_SUCCESS;
+}
+
+int get_state(int socket)
+{
+    int response = STATE_NO_ERROR;
+    my_args arg;
+    struct core_state state;
+    
+    arg.values = &state;
+    arg.size = sizeof(state);
+    arg.type = ARG_GET;
+    
+    if( (response = sendCommandToDispatch(COMMAND_GET_STATE,0,1,arg)) < 0)
+    {
+        /*manage error*/
+        fprintf(stderr,"(controllib) get_state, failed to send command to dispatch\n");
+        response = htonl(STATE_SEND_COMMAND_TO_DISPATCH_FAILED);
+        send(socket,&response, sizeof(response), 0);
+        return EXIT_FAILURE;
+    }
+
+    response = htonl(response);
+    if(send(socket,&response, sizeof(response), 0) != sizeof(response))
+    {
+        perror("(controllib) setSpeed, failed to send state");
+        return EXIT_FAILURE;
+    }
+    
+    printf("Running : %d, Recording : %d, File : %d, Stream : %d, Parsing : %d, Reading : %d, Pause : %d, Goto : %d, Parsed : %d, Finished : %d\n",
+        (IS_RUNNING((&state))?1:0), (IS_RECORDING((&state))?1:0),(IS_FILE((&state))?1:0),(IS_STREAM((&state))?1:0),(IS_PARSING((&state))?1:0),
+        (IS_READING((&state))?1:0), (IS_PAUSE((&state))?1:0),(IS_GOTO((&state))?1:0),(IS_PARSED((&state))?1:0),(IS_FINISHED((&state))?1:0));
+    
+    printf("%lu,%.6u sur %lu,%.6u\n",state.file_current.tv_sec,state.file_current.tv_usec,state.file_duration.tv_sec,state.file_duration.tv_usec);
+    printf("%d sur %d\n",state.packet_readed, state.packet_in_file);
+    printf("file/interface : %s\n",(file_path == NULL)?"none":file_path);
+    
+    /*envoyer l'etat*/
+    state.state = htonl(state.state);
+    if(send(socket,&state.state, sizeof(state.state), 0) != sizeof(state.state))
+    {
+        perror("(controllib) get_state, failed to send state");
+        return EXIT_FAILURE;
+    }
+    
+    state.packet_readed = htonl(state.packet_readed);
+    if(send(socket,&state.packet_readed, sizeof(state.packet_readed), 0) != sizeof(state.packet_readed))
+    {
+        perror("(controllib) get_state, failed to send packet_readed");
+        return EXIT_FAILURE;
+    }
+    
+    state.packet_in_file = htonl(state.packet_in_file);
+    if(send(socket,&state.packet_in_file, sizeof(state.packet_in_file), 0) != sizeof(state.packet_in_file))
+    {
+        perror("(controllib) get_state, failed to send packet_in_file");
+        return EXIT_FAILURE;
+    }
+    
+    state.file_current.tv_sec = htonll(state.file_current.tv_sec);
+    if(send(socket,&state.file_current.tv_sec, sizeof(state.file_current.tv_sec), 0) != sizeof(state.file_current.tv_sec))
+    {
+        perror("(controllib) get_state, failed to send file_current.tv_sec");
+        return EXIT_FAILURE;
+    }
+    
+    state.file_current.tv_usec = htonll(state.file_current.tv_usec);
+    if(send(socket,&state.file_current.tv_usec, sizeof(state.file_current.tv_usec), 0) != sizeof(state.file_current.tv_usec))
+    {
+        perror("(controllib) get_state, failed to send file_current.tv_usec");
+        return EXIT_FAILURE;
+    }
+    
+    state.file_duration.tv_sec = htonll(state.file_duration.tv_sec);
+    if(send(socket,&state.file_duration.tv_sec, sizeof(state.file_duration.tv_sec), 0) != sizeof(state.file_duration.tv_sec))
+    {
+        perror("(controllib) get_state, failed to send file_duration.tv_sec");
+        return EXIT_FAILURE;
+    }
+    
+    state.file_duration.tv_usec = htonll(state.file_duration.tv_usec);
+    if(send(socket,&state.file_duration.tv_usec, sizeof(state.file_duration.tv_usec), 0) != sizeof(state.file_duration.tv_usec))
+    {
+        perror("(controllib) get_state, failed to send file_duration.tv_usec");
+        return EXIT_FAILURE;
+    }
+    
+    /*envoyer la source*/
+    if(writeString(socket,(file_path == NULL)?"":file_path) != 0)
+    {
+        fprintf(stderr,"(controllib) get_state, failed to send an entry\n");
+        return EXIT_FAILURE;
+    }
+    
+    return EXIT_SUCCESS;
+}
+
+int disable_device(int socket)
+{
+    if(file_path != NULL)
+    {
+        free(file_path);
+        file_path = NULL;
+    }
+    
+    return directTransmit(socket,COMMAND_DISABLE_CAPTURE_DEVICE);
+}
+
 int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
 {   
     va_list ap;
@@ -701,6 +857,16 @@ int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
         return EXIT_FAILURE;
     }
     
+    /*on attend le semaphore du dispatch, il doit avoir fini de traiter la commande precedente
+    printf("(controllib) lock\n");
+    if(lockSem(mem->semDescr, 1) < 0)
+    {
+        perror("(controllib) sendCommandToDispatch, failed to wait semaphore from dispatch");
+        va_end(ap);
+        return EXIT_FAILURE;
+    }
+    printf("(controllib) delock\n");*/
+    
     /*send signal*/
     if(kill(dispatch_id,SIGUSR1)<0)
     {
@@ -709,13 +875,15 @@ int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
         return EXIT_FAILURE;
     }
     
-    /*on attend le semaphore du dispatch*/
+    printf("(controllib) lock\n");
+    /*on attend le semaphore du dispatch, il doit avoir fini de lire la memoire partagée*/
     if(lockSem(mem->semDescr, 1) < 0)
     {
         perror("(controllib) sendCommandToDispatch, failed to wait semaphore from dispatch");
         va_end(ap);
         return EXIT_FAILURE;
     }
+    printf("(controllib) delock\n");
     
     /*on verrouille la memoire*/
     if(openMemory(mem)< 0)
@@ -753,6 +921,3 @@ int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
     /*on retourne l'etat*/
     return i;
 }
-
-
-

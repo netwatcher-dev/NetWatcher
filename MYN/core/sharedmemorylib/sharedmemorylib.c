@@ -126,7 +126,7 @@ int lockSem(int descr, int semid)
     struct sembuf sop;
     
     sop.sem_num = semid; 
-    sop.sem_op  = -1; /*incremente*/
+    sop.sem_op  = -1; /*decremente*/
     sop.sem_flg = 0; /*allow wait*/
     
     return semop(descr,&sop,1);

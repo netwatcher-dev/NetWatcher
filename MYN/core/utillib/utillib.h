@@ -13,5 +13,9 @@ int fileExist(const char * path);
 char * readString(int socket);
 int writeString(int socket, const char * string);
 int isDir(char* file);
+void timevalSubstraction(struct timeval * result, struct timeval * A, struct timeval * B);
+
+uint64 htonll(uint64 value);
+uint64 ntohll(uint64 value);
 
 #endif

@@ -8,11 +8,9 @@
 #include <fcntl.h>
 #include <unistd.h> /* Read */
 #include "../collectorlib/collectorlib.h"
-#include "../structlib/structlib.h"
 #include "../core_type.h"
 
-#define INIT_TIMEOUT 30 /* in second */
-#define INIT_ENTRIES 15
+#define INIT_ENTRIES 100
 #define COMMAND_SET_LENGTH 1 /* Code command */
 #define COMMAND_CLEAR 2      /* Code command */
 #define COMMAND_GET_PLIST 4  /* Code command */
@@ -86,6 +84,6 @@ int dump(DLinkedList *list, DLinkedList *list_time); /* Copy the list into a fil
 void remove_proto(DLinkedList *list, struct struct_proto* n); /* Remove a protocol of the list of IP-PROTO */
 struct struct_proto* insert_proto(struct struct_proto* current, struct struct_proto* new); /* Insert a new proto in the list of IP-PROTO */
 struct struct_proto* create_proto(collector_entry new_item); /* Create a new proto */
-void update_list_entries(DLinkedList *list, DLinkedList *list_time, collector_entry new_item, int max_entries, int syn); /* Update the list with a new item */
+void update_list_entries(DLinkedList *list, DLinkedList *list_time, collector_entry new_item, int max_entries); /* Update the list with a new item */
 
 #endif
