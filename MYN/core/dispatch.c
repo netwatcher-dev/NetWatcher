@@ -1,14 +1,65 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #ifdef __gnu_linux__
 
 #define _SVID_SOURCE
 #define _BSD_SOURCE
 #define _POSIX_SOURCE
+#define _ISOC99_SOURCE
 #include <sys/types.h>
 
 #endif
 
+#ifdef HAVE_PCAP_H
 #include <pcap.h>
-#include <ctype.h> /*isprint*/
+#endif
+
+#ifdef HAVE_PCAP_PCAP_H
+#include <pcap/pcap.h>
+#endif
+
+#if !(defined(HAVE_PCAP_H) || defined(HAVE_PCAP_PCAP_H))
+#include <pcap.h>
+#include <pcap/pcap.h>
+#endif
+
 #include <string.h> /*memset*/
 #include <stdio.h> /*printf, fprintf*/
 #include <stdlib.h> /*exit*/
@@ -18,7 +69,6 @@
 #include <netinet/ip.h> /*struct ip*/
 #include <arpa/inet.h>
 #include <time.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -43,7 +93,8 @@ void haltpcap();
 void handler(int sig);
 int manage_command(mymemory *  mem);
 void stopRecording();
-pcap_t * pcap_open_live_wifi(const char *source, int snaplen, int promisc, int to_ms, char *errbuf);
+pcap_t * pcap_open_live_extented(const char *source, int snaplen, int promisc, int to_ms, int rfmon, int buff_size, char *errbuf);
+int testRfMon(const char *source, char *errbuf);
 /*##################### TCP RESEQ global vars ####################
 sequence_entry * seq_start = NULL;
 sequence_entry * seq_last = NULL;*/
@@ -56,14 +107,15 @@ char * local_pcap_file;
 
 /*##################### WORKING vars ####################*/
 datalink_info link_info; /*information de la couche liaison de donnée*/
-int act, state, init, init2, speed_state; /*control/state variable*/
+int act, state, init_goto, init_diff, init_getstate, speed_state; /*control/state variable*/
 int to_collector; /*communication pipe*/
 uint8 speed; /*facteur de vitesse non recalculé*/
 long int speed_factor; /*facteur de vitesse recalculé*/
 struct ifaddrs *ifp; /*liste des adresses locale*/
 struct timeval prec_packet, goto_val; /*timestamp pour le goto*/
 sigset_t old_set, block_set; /*masque de signaux pour le sigsuspend, sigprocmask,...*/
-datalink_check checker;
+datalink_check checker; /*la routine de verification de la couche ethernet*/
+int goto_type;
 
 /*##################### STATE vars ####################*/
 uint32 packet_readed, packet_in_file;
@@ -84,10 +136,12 @@ int main(int argc, char *argv[])
     ifp = NULL;
     state = 0;
     act = 0;
-    speed = 0x81;
+    speed = 0x80;
+    speed_factor = 100; /*par defaut, 100%*/
     local_pcap_file = NULL;
     checker = datalink_check_function_plop[DATALINK_MANAGED-1];
-
+    goto_type = -1;
+    
     initFilter();
 
     sigemptyset(&old_set);
@@ -130,6 +184,7 @@ int main(int argc, char *argv[])
     }
     
     printf("(dispatch) start : shmDesc:(%d), semDesc:(%d), to_collector:(%d)\n",shmDesc,semDesc,to_collector);
+    printf("(dispatch) libpcap version : %s\n",pcap_lib_version());
     
     /*on bloque le signal SIGUSR1, il ne peut être reçu qu'en dehors des sections critiques*/
     sigprocmask(SIG_BLOCK, &block_set, &old_set);
@@ -142,7 +197,7 @@ int main(int argc, char *argv[])
     sigaction(SIGUSR1,&action,(struct sigaction *)0);
 
     while(1)
-    {           
+    {         
         if(act == ACT_STOP || ((state&STATE_FILE) && (act&ACT_PAUSE))) /*si rien a faire, on attend un signal*/
         {   
             printf("(dispatch) wait for an order... \n");
@@ -169,9 +224,9 @@ int main(int argc, char *argv[])
             
             printf("ACTION : stop(%d), start(%d), parse(%d), signal(%d), goto(%d), read(%d), pause(%d), resume(%d)\n",
             (act == ACT_STOP)?1:0, (act&ACT_START)?1:0, (act&ACT_PARSE)?1:0, (act&ACT_HANDLE_SIGNAL)?1:0, (act&ACT_GOTO)?1:0, (act&ACT_READ)?1:0, (act&ACT_PAUSE)?1:0, (act&ACT_RESUME)?1:0); 
-            
-            printf("STATE : nothing(%d), running(%d), recording(%d), file(%d), stream(%d), parsing(%d), reading(%d), pause(%d)\n",
-            (state == STATE_NOTHING)?1:0, (state&STATE_RUNNING)?1:0, (state&STATE_RECORDING)?1:0, (state&STATE_FILE)?1:0, (state&STATE_STREAM)?1:0, (state&STATE_PARSING)?1:0, (state&STATE_READING)?1:0, (state&STATE_PAUSE)?1:0);
+
+            printf("STATE : nothing(%d), running(%d), recording(%d), file(%d), stream(%d), parsing(%d), reading(%d), pause(%d), goto(%d), parsed(%d), finished(%d)\n",
+            (state == STATE_NOTHING)?1:0, (state&STATE_RUNNING)?1:0, (state&STATE_RECORDING)?1:0, (state&STATE_FILE)?1:0, (state&STATE_STREAM)?1:0, (state&STATE_PARSING)?1:0, (state&STATE_READING)?1:0, (state&STATE_PAUSE)?1:0, (state&STATE_GOTO)?1:0, (state&STATE_PARSED)?1:0, (state&STATE_FINISHED)?1:0);
             
         }
         
@@ -188,16 +243,38 @@ int main(int argc, char *argv[])
             switch(pcap_loop(descr, -1, goto_func, NULL))
             {   
                 case 0:
-                    printf("(dispatch) end of file\n");
-                    state = STATE_FILE;
-                    act = ACT_STOP;/*on stop*/
+                    printf("(dispatch) end of file (1)\n");                    
+                    haltpcap();
+                    
+                    packet_in_file = packet_readed;
+                    file_duration = file_current;
+                    state = STATE_PARSED;
+                    
+                    /*try to reset the ressource*/
+                    if(local_pcap_file != NULL)
+                    {
+                        if( (descr = pcap_open_offline(local_pcap_file,errbuf)) == NULL)
+                        {
+                            fprintf(stderr,"(dispatch) pcap_open_offline : %s\n",errbuf);
+                        }
+                        else
+                        {
+                            state |= STATE_FILE;
+                        }
+                    }
+                    
+                    state |= STATE_FINISHED;
+                    
+                    flushAllSegment();/*on detruit la liste des segments tcp*/
+                    act = ACT_STOP;
                     break;
                 case -2: /*pcap_breakloop case*/
-                    printf("(dispatch) pcap_loop : pcap_breakloop case\n");
+                    printf("(dispatch) pcap_loop : pcap_breakloop case (1)\n");
                     if( state & STATE_GOTO)
                     {
                         act |= ACT_GOTO; /*needed to continued*/
                     }
+                    
                     break;
                 case -1: /*error case*/
                     pcap_perror(descr,"(dispatch) pcap_loop : error case :");
@@ -226,7 +303,7 @@ int main(int argc, char *argv[])
             switch(pcap_loop(descr, -1, got_packet, NULL))
             {   
                 case -2: /*pcap_breakloop case*/
-                    printf("(dispatch) pcap_loop : pcap_breakloop case\n");
+                    printf("(dispatch) pcap_loop : pcap_breakloop case (2)\n");
                     act |= ACT_START; /*needed to restart*/
                     break;
                 case -1: /*error case*/
@@ -244,7 +321,7 @@ int main(int argc, char *argv[])
             switch(pcap_loop(descr, -1, got_packet, NULL))
             {   
                 case 0:
-                    printf("(dispatch) end of file\n");
+                    printf("(dispatch) end of file (2)\n");
                     haltpcap();
                     
                     packet_in_file = packet_readed;
@@ -252,7 +329,7 @@ int main(int argc, char *argv[])
                     state = STATE_PARSED;
                     
                     /*try to reset the ressource*/
-                    if(pcap_file != NULL)
+                    if(local_pcap_file != NULL)
                     {
                         if( (descr = pcap_open_offline(local_pcap_file,errbuf)) == NULL)
                         {
@@ -264,11 +341,16 @@ int main(int argc, char *argv[])
                         }
                     }
                     
+                    if(act & ACT_READ)
+                    {
+                        state |= STATE_FINISHED;
+                    }
+                    
                     flushAllSegment();/*on detruit la liste des segments tcp*/
                     act = ACT_STOP;
                     break;
                 case -2: /*pcap_breakloop case*/
-                    printf("(dispatch) pcap_loop : pcap_breakloop case\n");
+                    printf("(dispatch) pcap_loop : pcap_breakloop case (3)\n");
                     if(state & STATE_PARSING)
                     {
                         act |= ACT_PARSE; /*needed to restart in parsing*/
@@ -308,7 +390,7 @@ int main(int argc, char *argv[])
 
 void handler(int sig)
 {
-    printf("(dispatch) receiving signal\n");
+    /*printf("(dispatch) receiving signal\n");*/
     if(sig == SIGUSR1)/*est ce bien le signal qui nous interesse */
     {
         printf("(dispatch) SIGUSR1\n");
@@ -332,8 +414,9 @@ int manage_command(mymemory *  mem)
     struct sockaddr_in sockaddr_server;
     struct core_state cstate;
     struct pcap_stat stat;
+    struct timeval result;
     
-    printf("(dispatch) manage command\n");
+    /*printf("(dispatch) manage command\n");*/
     
     switch(getAction(mem))
     {
@@ -354,10 +437,10 @@ int manage_command(mymemory *  mem)
             {
                 to_send = STATE_MUST_STOP_CAPTURE_BEFORE;break;
             }
-            
+
             if(getAction(mem) == COMMAND_SELECT_CAPTURE_DEVICE)
             {
-                if( (descr = pcap_open_live(buffer, MAXBYTES2CAPTURE, 1, 512, errbuf)) == NULL)
+                if( (descr = pcap_open_live_extented(buffer, MAXBYTES2CAPTURE, 1, 512, 0, 100000000, errbuf)) == NULL)
                 {
                     fprintf(stderr,"(dispatch) pcap_open_live : %s\n",errbuf);
                     to_send = STATE_PCAP_ERROR; break;
@@ -365,10 +448,17 @@ int manage_command(mymemory *  mem)
             }
             else
             {
-                if( (descr = pcap_open_live_wifi(buffer, MAXBYTES2CAPTURE, 1, 512, errbuf)) == NULL)
+                if(testRfMon(buffer, errbuf) == 0 )
                 {
-                    fprintf(stderr,"(dispatch) pcap_open_live : %s\n",errbuf);
-                    to_send = STATE_PCAP_ERROR; break;
+                    if( (descr = pcap_open_live_extented(buffer, MAXBYTES2CAPTURE, 1, 512, 1 , 100000000, errbuf)) == NULL)
+                    {
+                        fprintf(stderr,"(dispatch) pcap_open_live : %s\n",errbuf);
+                        to_send = STATE_PCAP_ERROR; break;
+                    }
+                }
+                else
+                {
+                    to_send = STATE_MONITOR_MODE_NOT_AVAILABLE; break;
                 }
             }
             
@@ -416,7 +506,7 @@ int manage_command(mymemory *  mem)
             if( (local_pcap_file = malloc(size * sizeof(char))) == NULL )
             {
                 perror("(dispatch) failed to get memory to pcap file");
-                to_send = STATE_PCAP_ERROR;break;
+                to_send = STATE_SERVER_ERROR;break;
             }
             
             strcpy(local_pcap_file, buffer);
@@ -564,7 +654,69 @@ int manage_command(mymemory *  mem)
             file_first_paquet.tv_usec = 0; file_first_paquet.tv_sec = 0;
             
             packet_readed = 0;
-            init2 = 1;/*indique qu'on doit retenir le timestamp du premier packet*/
+            init_getstate = 1;/*indique qu'on doit retenir le timestamp du premier packet, il servira de référence pour calculer le temps reel d'un fichier*/
+            break;
+    /*####################################################################################################################*/
+        case COMMAND_FILE_GOTO:
+        case COMMAND_FILE_GOTO_AND_READ:
+            printf("(dispatch) file GOTO\n");
+            
+            if(descr == NULL)
+            {
+                fprintf(stderr,"(dispatch) pcap descriptor is NULL\n");
+                to_send = STATE_NO_FILE_SELECTED;break;
+            }
+            
+            if( (state & STATE_STREAM) != 0)
+            {
+                fprintf(stderr,"(dispatch) try to parse in device mode\n");
+                to_send = STATE_NOT_ALLOWED_IN_DEVICE_MODE;break;
+            }
+            
+            if(state & STATE_RUNNING)
+            {
+                fprintf(stderr,"(dispatch) not allowed in running mode\n");
+                to_send = STATE_ALREADY_RUNNING;break;
+            }
+            
+            if(getAreaMemory(mem, 0,(void **) &buffer, &size) < 0)
+            {
+                fprintf(stderr,"(dispatch) manage_command, argument 0 is wrong or missing\n");
+                to_send = STATE_ARG_WRONG_OR_MISSING; break;
+            }
+            
+            if(size != sizeof(struct timeval))
+            {
+                fprintf(stderr,"(dispatch) set speed, argument 0 has a size different of %lu : %d\n",sizeof(struct timeval), size);
+                to_send = STATE_ARG_WRONG_OR_MISSING; break;
+            }
+            
+            memcpy(&goto_val,buffer,sizeof(struct timeval));
+            
+            act = ACT_GOTO;
+            state |= STATE_RUNNING;
+            state |= STATE_GOTO;
+            
+            if(state & STATE_FINISHED)
+            {
+                state ^= STATE_FINISHED;
+            }
+            
+            if( !(state & STATE_PARSED) )
+            {
+                packet_in_file = 0;
+                file_duration.tv_usec = 0; file_duration.tv_sec = 0;
+            }
+            file_current.tv_usec = 0; file_current.tv_sec = 0;
+            file_first_paquet.tv_usec = 0; file_first_paquet.tv_sec = 0;
+            
+            packet_readed = 0;
+            init_getstate = 1;/*indique qu'on doit retenir le timestamp du premier packet, il servira de référence pour calculer le temps reel d'un fichier*/
+            init_goto = 1; /*indique qu'on doit retenir les infos du premier packet lu comme une reference, c'est pour le goto*/
+            init_diff = 1; /*indique qu'on doit retenir les infos du premier packet lu comme une reference, c'est pour le différé*/
+            
+            goto_type = getAction(mem);
+            
             break;
     /*####################################################################################################################*/
         case COMMAND_FILE_READ:
@@ -588,22 +740,84 @@ int manage_command(mymemory *  mem)
                 to_send = STATE_ALREADY_RUNNING;break;
             }
             
-            act = ACT_READ;
+            act = ACT_READ;            
             state |= STATE_RUNNING;
             state |= STATE_READING;
+            
+            if(state & STATE_FINISHED)
+            {
+                state ^= STATE_FINISHED;
+            }
             
             if( !(state & STATE_PARSED) )
             {
                 packet_in_file = 0;
                 file_duration.tv_usec = 0; file_duration.tv_sec = 0;
             }
+            
             file_current.tv_usec = 0; file_current.tv_sec = 0;
             file_first_paquet.tv_usec = 0; file_first_paquet.tv_sec = 0;
-            
+        
             packet_readed = 0;
             
-            init = 1; /*indique qu'on doit retenir les infos du premier packet lu comme une reference*/
-            init2 = 1; /*indique qu'on doit retenir le timestamp du premier packet*/
+            init_diff = 1; /*indique qu'on doit retenir les infos du premier packet lu comme une reference, c'est pour le différé*/
+            init_getstate = 1; /*indique qu'on doit retenir le timestamp du premier packet, il servira de référence pour calculer le temps reel d'un fichier*/
+            break;
+            
+    /*####################################################################################################################*/
+        case COMMAND_FILE_STOP:
+            printf("(dispatch) stop file\n");
+            
+            if(descr == NULL)
+            {
+                fprintf(stderr,"(dispatch) pcap descriptor is NULL\n");
+                to_send = STATE_NO_FILE_SELECTED;break;
+            }
+            
+            if( (state & STATE_STREAM) != 0)
+            {
+                fprintf(stderr,"(dispatch) try to parse in device mode\n");
+                to_send = STATE_NOT_ALLOWED_IN_DEVICE_MODE;break;
+            }
+            
+            size = state;
+            haltpcap();
+            act = ACT_STOP; /*on remet a zero*/
+            flushAllSegment();
+            
+            if( (descr = pcap_open_offline(local_pcap_file,errbuf)) == NULL)
+            {
+                fprintf(stderr,"(dispatch) pcap_open_offline : %s\n",errbuf);
+                free(local_pcap_file); local_pcap_file = NULL;
+                to_send = STATE_PCAP_ERROR;break;
+            }
+            
+            if(setDatalink(pcap_datalink(descr)) < 0)
+            {
+                fprintf(stderr,"(dispatch) datalink type not supported  : %s\n",pcap_datalink_val_to_name(pcap_datalink(descr)));
+                free(local_pcap_file); local_pcap_file = NULL;
+                haltpcap();
+                to_send = STATE_DATALINK_NOT_MANAGED;break;
+            }
+            
+            capture_setFileMode(); /*flush wait and disable buffering in wait*/
+            state = STATE_FILE;
+        
+            if(size & STATE_PARSED)
+            {
+                state |= STATE_PARSED;
+            }
+            
+            if(state & STATE_FINISHED)
+            {
+                state ^= STATE_FINISHED;
+            }
+            
+            file_current.tv_usec = 0; file_current.tv_sec = 0;
+            file_first_paquet.tv_usec = 0; file_first_paquet.tv_sec = 0;
+        
+            packet_readed = 0;
+        
             break;
     /*####################################################################################################################*/
         case COMMAND_FLUSH_SEGMENT:
@@ -702,7 +916,12 @@ int manage_command(mymemory *  mem)
                 if(state & STATE_FILE)
                 {
                     /*disable buffering*/
+                    
+                    #ifdef DEV
                     if( execlp("./wait","wait", arg1, arg2, arg3,"0",arg4, (char *)0) < 0)
+                    #else
+                    if( execlp("wait","wait", arg1, arg2, arg3,"0",arg4, (char *)0) < 0)
+                    #endif
                     {
                         perror("(dispatch) manage_command,failed to execlp wait");
                         exit(EXIT_FAILURE);
@@ -711,7 +930,11 @@ int manage_command(mymemory *  mem)
                 else
                 {
                     /*enable buffering*/
+                    #ifdef DEV
                     if( execlp("./wait","wait", arg1, arg2, arg3,"1",arg4, (char *)0) < 0)
+                    #else
+                    if( execlp("wait","wait", arg1, arg2, arg3,"1",arg4, (char *)0) < 0)
+                    #endif
                     {
                         perror("(dispatch) manage_command,failed to execlp wait");
                         exit(EXIT_FAILURE);
@@ -727,12 +950,12 @@ int manage_command(mymemory *  mem)
                 to_send = STATE_SERVER_ERROR;
                 break;
             }
-            /*else
-            {pere
-                close(pipes[0]); close read
-                close(pipes2[0]); close read
-                close(size); close the server socket
-            }*/
+            else
+            {/*pere*/
+                close(pipes[0]); /*close read*/
+                close(pipes2[0]); /*close read*/
+                close(size); /*close the server socket*/
+            }
             
             /*ecrire le port dans la memoire*/
             cleanAreaMemories(mem);
@@ -874,7 +1097,7 @@ int manage_command(mymemory *  mem)
             }
             break;
     /*####################################################################################################################*/
-        case COMMAND_FILE_GOTO:
+        /*case COMMAND_FILE_GOTO:
             printf("(dispatch) file GOTO\n");
             
             if(descr == NULL)
@@ -912,8 +1135,8 @@ int manage_command(mymemory *  mem)
             act = ACT_GOTO;
             state |= STATE_RUNNING;
             state |= STATE_GOTO;
-            init = 1; /*indique qu'on doit retenir les infos du premier packet lu comme une reference*/
-            break;
+            init = 1; indique qu'on doit retenir les infos du premier packet lu comme une reference
+            break;*/
             
     /*####################################################################################################################*/        
         case COMMAND_GET_STATE:
@@ -929,8 +1152,14 @@ int manage_command(mymemory *  mem)
             cstate.state = state;
             cstate.packet_readed = packet_readed;
             cstate.packet_in_file = packet_in_file;
-            timevalSubstraction(&cstate.file_current,&file_current,&file_first_paquet);
-            timevalSubstraction(&cstate.file_duration,&file_duration,&file_first_paquet);
+            timevalSubstraction(&result,&file_current,&file_first_paquet);
+            
+            cstate.file_current_tv_sec = result.tv_sec;
+            cstate.file_current_tv_usec = result.tv_usec;
+            
+            timevalSubstraction(&result,&file_duration,&file_first_paquet);
+            cstate.file_duration_tv_sec = result.tv_sec;
+            cstate.file_duration_tv_usec = result.tv_usec;
 
             memcpy(buffer,&cstate,sizeof(struct core_state));
         
@@ -941,7 +1170,6 @@ int manage_command(mymemory *  mem)
     }
     
     setState(mem,to_send);
-    
     if(unlockSem(mem->semDescr, 1) < 0)
     {
         perror("(controllib) sendCommandToDispatch, failed to wait semaphore from dispatch");
@@ -980,12 +1208,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
         printf("NULL PACKET \n\n");
         return;
     }
-    
-    /*RECORDING*/
-    if(state & STATE_RECORDING)
-    {
-        pcap_dump((u_char *)dumper_descr,pkthdr,packet);
-    }
 
 #ifdef PRINT_PCAP
     printf("(Dispatch) Received packet size : %d, ",pkthdr->len);
@@ -999,10 +1221,10 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
         if((state & STATE_READING) )
         {
             /*if init, no wait*/
-            if(init)
+            if(init_diff)
             {
                 prec_packet = pkthdr->ts;
-                init = 0;
+                init_diff = 0;
             }
         
             /*delay*/
@@ -1028,10 +1250,10 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
             prec_packet = pkthdr->ts;
         }
         
-        if(init2)
+        if(init_getstate)
         {
             file_first_paquet = pkthdr->ts;
-            init2 = 0;
+            init_getstate = 0;
         }
         
         file_current = pkthdr->ts;
@@ -1111,6 +1333,12 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
             return;
         }
     }
+    
+    /*RECORDING*/
+    if(state & STATE_RECORDING)
+    {
+        pcap_dump((u_char *)dumper_descr,pkthdr,packet);
+    }
 	
 	/* COLLECTOR */
     header_to_send.epoch_time = pkthdr->ts.tv_sec;  /* Epoch time */
@@ -1121,16 +1349,21 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
     {
         sendToAllNode(packet,link_info.header_size+network_size,(pkthdr->ts));
     }
+    
+    forwardSegmentInBuffer(pkthdr->ts);
 }
 
 void goto_func(u_char *args, const struct pcap_pkthdr *pkthdr, const u_char *packet)
 {
-    /*sigemptyset(&block_set);
-    sigprocmask(SIG_SETMASK, &block_set, &old_set); */
-    
-    if(init)
+    if(init_getstate)
     {
-        init = 0;
+        file_first_paquet = pkthdr->ts;
+        init_getstate = 0;
+    }
+    
+    if(init_goto)
+    {
+        init_goto = 0;
         
         goto_val.tv_sec += pkthdr->ts.tv_sec;
         goto_val.tv_usec += pkthdr->ts.tv_usec;
@@ -1143,16 +1376,31 @@ void goto_func(u_char *args, const struct pcap_pkthdr *pkthdr, const u_char *pac
     }
     else
     {
+        printf("%lu.%u vs %lu.%u\n",pkthdr->ts.tv_sec,pkthdr->ts.tv_usec,goto_val.tv_sec,goto_val.tv_usec);
         if(pkthdr->ts.tv_sec > goto_val.tv_sec || (pkthdr->ts.tv_sec == goto_val.tv_sec &&  pkthdr->ts.tv_usec > goto_val.tv_usec))
         {
-            prec_packet = pkthdr->ts; /*necessaire pour le delay lors d'un read*/
-            
-            pcap_breakloop(descr); /*on brise la boucle*/
-            state ^= STATE_GOTO; /*on arrete le goto*/
-            state ^= STATE_RUNNING;
-            act = ACT_STOP;
+            if(goto_type == COMMAND_FILE_GOTO)
+            {
+                printf("A\n");
+                prec_packet = pkthdr->ts; /*necessaire pour le delay lors d'un read*/
+
+                pcap_breakloop(descr); /*on brise la boucle*/
+                state ^= STATE_GOTO; /*on arrete le goto*/
+                state ^= STATE_RUNNING;
+                act = ACT_STOP;
+            }
+            else
+            {
+                printf("B\n");
+                state |= STATE_READING;
+                got_packet(args,pkthdr,packet);
+                return;
+            }
         }
     }
+    
+    file_current = pkthdr->ts;
+    packet_readed += 1;
 }
 
 void haltpcap()
@@ -1187,7 +1435,7 @@ int setDatalink(int type_link)
     
     for(i = 0;i<DATALINK_MANAGED-1;i+=1)
     {
-        printf("(datalink) %d vs %d\n",datalink_check_function_plop[i].datalink_type,type_link);
+        /*printf("(datalink) %d vs %d\n",datalink_check_function_plop[i].datalink_type,type_link);*/
         if(datalink_check_function_plop[i].datalink_type == type_link)
         {
             link_info.header_size = datalink_check_function_plop[i].header_size;
@@ -1208,8 +1456,30 @@ int setDatalink(int type_link)
     return -1;
 }
 
+int testRfMon(const char *source, char *errbuf)
+{
+    pcap_t *p;
+    int ret;
+    
+    if ( (p = pcap_create(source, errbuf)) == NULL)
+    {
+        return -1;
+    }
+    
+	if(pcap_can_set_rfmon(p) == 1)
+	{
+	    ret = 0;
+	}
+	else
+	{
+        ret = -1;
+	}
+	pcap_close(p);
+    return ret;
+}
+
 pcap_t *
-pcap_open_live_wifi(const char *source, int snaplen, int promisc, int to_ms, char *errbuf)
+pcap_open_live_extented(const char *source, int snaplen, int promisc, int to_ms, int rfmon, int buff_size, char *errbuf)
 {
 	pcap_t *p;
 	int status;
@@ -1218,17 +1488,14 @@ pcap_open_live_wifi(const char *source, int snaplen, int promisc, int to_ms, cha
 	if (p == NULL)
 		return (NULL);
 	
-	if(pcap_can_set_rfmon(p) == 1)
-	{
-	    status = pcap_set_rfmon(p, 1);
-    	if (status < 0)
-    		goto fail;
-	}
-	else
-	{
-        printf("(dispatch) pcap_open_live_wifi, monitor mode is not available for the interface %s\n",source);
-	}
-		
+	status = pcap_set_rfmon(p, rfmon);
+	if (status < 0)
+		goto fail;
+	
+    status = pcap_set_buffer_size(p,buff_size);
+    if (status < 0)
+		goto fail;
+    			
 	status = pcap_set_snaplen(p, snaplen);
 	if (status < 0)
 		goto fail;
@@ -1254,14 +1521,13 @@ pcap_open_live_wifi(const char *source, int snaplen, int promisc, int to_ms, cha
 		goto fail;
 	return (p);
 fail:
-	/*if (status == PCAP_ERROR)
-		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", source,p->errbuf);
-	else if (status == PCAP_ERROR_NO_SUCH_DEVICE || status == PCAP_ERROR_PERM_DENIED || status == PCAP_ERROR_PROMISC_PERM_DENIED)
-		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s (%s)", source, pcap_statustostr(status), p->errbuf);
+	if (status == PCAP_ERROR)
+		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", source,pcap_geterr(p));
+	else if (status == PCAP_ERROR_NO_SUCH_DEVICE || status == PCAP_ERROR_PERM_DENIED /*|| status == PCAP_ERROR_PROMISC_PERM_DENIED*/)
+		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s (%s)", source, pcap_statustostr(status), pcap_geterr(p));
 	else
 		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", source, pcap_statustostr(status));
-	*/
-    printf("ERROR pcap_open_live_wifi %d\n",status);
+		
 	pcap_close(p);
 	return (NULL);
 }

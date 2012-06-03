@@ -1,3 +1,42 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #ifdef __gnu_linux__
 
 #define _BSD_SOURCE
@@ -29,6 +68,7 @@ int sendOrder(int socket, sint8 command);
 int sendCommandWithString(int socket, sint8 command, const char * string);
 int sendCommandWithString2(int socket, sint8 command, int argc,char * argv[]);
 int sendTwoUINT32(int socket, sint8 command, uint32 int1, uint32 int2);
+int getState(int socket, struct core_state * state, char ** file_path);
 void usage();
 
 int setSpeed(int socket, uint8 value);
@@ -127,6 +167,9 @@ int execute(int socket, int argc,char * argv[])
     
     uint32 secs,micro_secs;
     
+    struct core_state state;
+    char * file_path;
+    
     if(strcmp("help", argv[0]) == 0)
     {
         usage();        
@@ -200,11 +243,32 @@ int execute(int socket, int argc,char * argv[])
     {
         return sendOrder(socket,COMMAND_FILE_READ);
     }
+    else if(strcmp("fstop", argv[0]) == 0) /*stop all capture*/
+    {
+        return sendOrder(socket,COMMAND_FILE_STOP);
+    }
     else if(strcmp("info", argv[0]) == 0) /*stop all capture*/
     {
-        return sendOrder(socket,COMMAND_GET_STATE);
+        speed1 = getState(socket, &state, &file_path);
+        if(speed1 >= 0)
+        {
+            printf("Running : %d, Recording : %d, File : %d, Stream : %d, Parsing : %d, Reading : %d, Pause : %d, Goto : %d, Parsed : %d, Finished : %d\n",
+                (IS_RUNNING((&state))?1:0), (IS_RECORDING((&state))?1:0),(IS_FILE((&state))?1:0),(IS_STREAM((&state))?1:0),(IS_PARSING((&state))?1:0),
+                (IS_READING((&state))?1:0), (IS_PAUSE((&state))?1:0),(IS_GOTO((&state))?1:0),(IS_PARSED((&state))?1:0),(IS_FINISHED((&state))?1:0));
+
+
+            printf("%llu,%.6llu of %llu,%.6llu\n",state.file_current_tv_sec,state.file_current_tv_usec,state.file_duration_tv_sec,state.file_duration_tv_usec);
+            printf("%d packet(s) on %d\n",state.packet_readed, state.packet_in_file);
+            printf("file/interface : %s\n",(file_path == NULL)?"none":file_path);
+            
+            if(file_path != NULL)
+            {
+                free(file_path);
+            }
+        }
+        return speed1;
     }
-    else if(strcmp("fgoto", argv[0]) == 0) /*goto timestamp in file*/
+    else if(strcmp("fgoto", argv[0]) == 0 || strcmp("fgotor", argv[0]) == 0) /*goto timestamp in file*/
     {
         /*COMMAND_FILE_GOTO*/
         if(argc < 3)
@@ -229,6 +293,7 @@ int execute(int socket, int argc,char * argv[])
             usage();
             return EXIT_FAILURE;
         }
+        printf("secs : %u\n",secs);
         
         if(strlen(argv[2]) > 6 || strlen(argv[2]) <1)
         {
@@ -245,7 +310,7 @@ int execute(int socket, int argc,char * argv[])
             usage();
             return EXIT_FAILURE;
         }
-        
+        printf("micro_secs : %u\n",micro_secs);
         
         if( ! (micro_secs >= 0 && micro_secs <= 999999) )
         {
@@ -253,10 +318,16 @@ int execute(int socket, int argc,char * argv[])
             usage();
             return EXIT_FAILURE;
         }
+                
+        if(strcmp("fgoto", argv[0]) == 0)
+        {
+            return sendTwoUINT32(socket, COMMAND_FILE_GOTO, htonl(secs), htonl(micro_secs));
+        }
+        else
+        {
+            return sendTwoUINT32(socket, COMMAND_FILE_GOTO_AND_READ, htonl(secs), htonl(micro_secs));
+        }
         
-        printf("%u, %u\n",secs,micro_secs);
-        
-        return sendTwoUINT32(socket, COMMAND_FILE_GOTO, htonl(secs), htonl(micro_secs));
     }
     else if(strcmp("pause", argv[0]) == 0) /*stop all capture*/
     {
@@ -433,7 +504,7 @@ int shell(int socket)
             return EXIT_FAILURE;
         }*/
         
-        cmd_tmp = readline("M.Y.N control:>");
+        cmd_tmp = readline("NetWatcher:>");
         
         if(cmd_tmp == NULL)
         {
@@ -469,7 +540,7 @@ int shell(int socket)
             }          
         }
 
-        if( (ret = execute(socket,count,argv)) < 0)
+        if( (ret = execute(socket,count,argv)) != EXIT_SUCCESS)
         {
             return ret;
         }
@@ -510,59 +581,136 @@ int sendOrder(int socket, sint8 command)
 
 int getState(int socket, struct core_state * state, char ** file_path)
 {
-    if(recv(socket,&state->state, sizeof(state->state), MSG_WAITALL) != sizeof(state->state))
+    sint32 resp; 
+    int size;
+    sint8 command = COMMAND_GET_STATE;
+    
+    if( send(socket,&command, sizeof(sint8), 0) < sizeof(sint8))
     {
-        perror("(controllib) get_state, failed to send state");
+        fprintf(stderr,"failed to send order\n");
+        return EXIT_FAILURE;
+    }
+    
+    if(  (size = recv(socket, &resp, sizeof(sint32),MSG_WAITALL)) != sizeof(sint32))
+    {
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("read failed");
+        }
+        return EXIT_FAILURE;
+    }
+    
+    if(checkResp(ntohl(resp)) != 0)
+    {
+        return EXIT_FAILURE;
+    }
+    
+    if((size = recv(socket,&state->state, sizeof(state->state), MSG_WAITALL)) != sizeof(state->state))
+    {
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive state");
+        }
         return EXIT_FAILURE;
     }
     state->state = ntohl(state->state);
     
-    if(recv(socket,&state->packet_readed, sizeof(state->packet_readed), MSG_WAITALL) != sizeof(state->packet_readed))
+    if((size = recv(socket,&state->packet_readed, sizeof(state->packet_readed), MSG_WAITALL)) != sizeof(state->packet_readed))
     {
-        perror("(controllib) get_state, failed to send packet_readed");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive packet_readed");
+        }
         return EXIT_FAILURE;
     }
     state->packet_readed = ntohl(state->packet_readed);
     
-    if(recv(socket,&state->packet_in_file, sizeof(state->packet_in_file), MSG_WAITALL) != sizeof(state->packet_in_file))
+    if((size = recv(socket,&state->packet_in_file, sizeof(state->packet_in_file), MSG_WAITALL)) != sizeof(state->packet_in_file))
     {
-        perror("(controllib) get_state, failed to send packet_in_file");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive packet_in_file");
+        }
         return EXIT_FAILURE;
     }
     state->packet_in_file = ntohl(state->packet_in_file);
     
-    if(recv(socket,&state->file_current.tv_sec, sizeof(state->file_current.tv_sec), MSG_WAITALL) != sizeof(state->file_current.tv_sec))
+    if((size = recv(socket,&state->file_current_tv_sec, sizeof(state->file_current_tv_sec), MSG_WAITALL)) != sizeof(state->file_current_tv_sec))
     {
-        perror("(controllib) get_state, failed to send file_current.tv_sec");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive file_current.tv_sec");
+        }
         return EXIT_FAILURE;
     }
-    state->file_current.tv_sec = ntohll(state->file_current.tv_sec);
+    state->file_current_tv_sec = ntohll(state->file_current_tv_sec);
     
-    if(recv(socket,&state->file_current.tv_usec, sizeof(state->file_current.tv_usec), MSG_WAITALL) != sizeof(state->file_current.tv_usec))
+    if((size = recv(socket,&state->file_current_tv_usec, sizeof(state->file_current_tv_usec), MSG_WAITALL)) != sizeof(state->file_current_tv_usec))
     {
-        perror("(controllib) get_state, failed to send file_current.tv_usec");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive file_current.tv_usec");
+        }
         return EXIT_FAILURE;
     }
-    state->file_current.tv_usec = ntohll(state->file_current.tv_usec);
+    state->file_current_tv_usec = ntohll(state->file_current_tv_usec);
     
-    if(recv(socket,&state->file_duration.tv_sec, sizeof(state->file_duration.tv_sec), MSG_WAITALL) != sizeof(state->file_duration.tv_sec))
+    if((size = recv(socket,&state->file_duration_tv_sec, sizeof(state->file_duration_tv_sec), MSG_WAITALL)) != sizeof(state->file_duration_tv_sec))
     {
-        perror("(controllib) get_state, failed to send file_duration.tv_sec");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive file_duration.tv_sec");
+        }
         return EXIT_FAILURE;
     }
-    state->file_duration.tv_sec = ntohll(state->file_duration.tv_sec);
+    state->file_duration_tv_sec = ntohll(state->file_duration_tv_sec);
     
-    if(recv(socket,&state->file_duration.tv_usec, sizeof(state->file_duration.tv_usec), 0) != sizeof(state->file_duration.tv_usec))
+    if((size = recv(socket,&state->file_duration_tv_usec, sizeof(state->file_duration_tv_usec), 0)) != sizeof(state->file_duration_tv_usec))
     {
-        perror("(controllib) get_state, failed to send file_duration.tv_usec");
+        if(size == 0)
+        {
+            printf("connection reset by peer\n");
+        }
+        else
+        {
+            perror("failed to receive file_duration.tv_usec");
+        }
         return EXIT_FAILURE;
     }
-    state->file_duration.tv_usec = ntohll(state->file_duration.tv_usec);
+    state->file_duration_tv_usec = ntohll(state->file_duration_tv_usec);
     
     /*envoyer la source*/
     if( ((*file_path) = readString(socket)) == NULL)
     {
-        fprintf(stderr,"(controllib) get_state, failed to send an entry\n");
+        fprintf(stderr,"failed to receive file path\n");
         return EXIT_FAILURE;
     }
     
@@ -924,6 +1072,7 @@ int checkResp(sint32 resp)
         case STATE_ZERO_VALUE : printf("zero value is not allowed\n"); break;
         case STATE_ALREADY_RUNNING : printf("this action is not available while the system is running\n");break;
         case STATE_INVALID_IDENTIFIER : printf("the identifier is unknown or invalid\n");break;
+        case STATE_MONITOR_MODE_NOT_AVAILABLE : printf("the monitor mode is not available on this device\n");break;
         
         default : printf("unknwon code %d\n",resp);
     }

@@ -1,3 +1,38 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
 #include "controllib.h"
 
 char * file_path = NULL;
@@ -61,7 +96,7 @@ int getProtocolList(int socket)
     uint32 resp;
     collector_entry entry;
     
-    printf("(control) COMMANDE RECEIVED and FORWARDING !!!!\n");
+    /*printf("(control) COMMANDE RECEIVED and FORWARDING !!!!\n");*/
     command = COMMAND_GET_PROTOCOL_LIST;
     if(write(to_collector,&command, sizeof(command)) != sizeof(command))
     {
@@ -75,7 +110,7 @@ int getProtocolList(int socket)
         perror("(controllib) getProtocolList size, failed to send state:");
         return EXIT_FAILURE;
     }
-    printf("Size recieved %d \n",response);
+    printf("(Controllib) getProtocolList, Size recieved %d \n",response);
     response = htonl(response);
     if(send(socket,&response, sizeof(uint32), 0) != sizeof(uint32))
     {
@@ -276,8 +311,8 @@ int selectCaptureFile(int socket)
         send(socket,&response, sizeof(response), 0); /*on ne se soucie pas de l'erreur*/
         return EXIT_FAILURE;
     }
-
-    if( (string2 = calloc(strlen(string)+17,sizeof(char))) == NULL)
+    /*/capture_files/*/
+    if( (string2 = calloc(strlen(home_directory)+15+strlen(string)+1,sizeof(char))) == NULL)
     {
         free(string);
         perror("(controllib) selectCaptureFile, failed to allocate path memory : ");
@@ -285,9 +320,11 @@ int selectCaptureFile(int socket)
         send(socket,&response, sizeof(response), 0); /*on ne se soucie pas de l'erreur*/
         return EXIT_FAILURE;
     }
-    strcpy(string2,"./capture_files/");
-    strcat(string2,string);
+    
+    sprintf(string2,"%s/capture_files/%s",home_directory,string);
     free(string);
+    
+    printf("file : %s\n",string2);
     
     /*file exists ? capture_files */
     if(fileExist(string2)==0)
@@ -422,10 +459,23 @@ int listFiles(int socket)
     DIR * dir;
     struct dirent dir_entry, * dir_result;
     int ret;
-    char file[1024];
+    char * string2, file[4096];
     
-    if( (dir = opendir("./capture_files")) == NULL)
+    
+    if( (string2 = calloc(strlen(home_directory)+15+1,sizeof(char))) == NULL)
     {
+        perror("(controllib) listFiles, failed to allocate path memory : ");
+        ret = htonl(STATE_SERVER_ERROR);
+        send(socket,&ret, sizeof(ret), 0); /*on ne se soucie pas de l'erreur*/
+        return EXIT_FAILURE;
+    }
+    
+    sprintf(string2,"%s/capture_files/",home_directory);
+    
+    if( (dir = opendir(string2)) == NULL)
+    {
+        free(string2);
+        perror("(controllib) listFiles, opendir");
         ret = htonl(STATE_SERVER_ERROR);
         send(socket,&ret, sizeof(ret), 0);
         return EXIT_FAILURE;
@@ -434,19 +484,21 @@ int listFiles(int socket)
     ret = htonl(STATE_NO_ERROR);    
     if(send(socket,&ret, sizeof(ret), 0) != sizeof(ret))
     {
+        free(string2);
         perror("(controllib) listFiles, failed to send state");
         return EXIT_FAILURE;
     }
     
     while ((ret = readdir_r(dir, &dir_entry,&dir_result)) == 0 && dir_result != NULL)
     {
-        strcpy(file,"./capture_files/");
+        sprintf(file,"%s%s",string2,dir_entry.d_name);
         
-        if(isDir(strcat(file,dir_entry.d_name)))
+        if(isDir(file))
            continue;
            
         if(writeString(socket, dir_entry.d_name) != 0)
         {
+            free(string2);
             fprintf(stderr,"(controllib) listFiles, failed to send an entry\n");
             closedir(dir);
             return -1;
@@ -463,11 +515,12 @@ int listFiles(int socket)
     ret = 0;
     if(send(socket,&ret, sizeof(ret), 0) != sizeof(ret))
     {
+        free(string2);
         perror("(controllib) listFiles, failed to send zero");
         return EXIT_FAILURE;
     }
     
-        
+    free(string2);
     return EXIT_SUCCESS;
 }
 
@@ -479,12 +532,13 @@ int startRecord(int socket)
     
     if(   (string = readString(socket)) == NULL)
     {
+        fprintf(stderr,"(controllib) startRecord, failed to read string\n");
         response = htonl(STATE_FAILED_TO_RECEIVED_STRING);
-        send(socket,&response, sizeof(response), 0);
+        send(socket,&response, sizeof(response), 0); /*on ne se soucie pas de l'erreur*/
         return EXIT_FAILURE;
     }
-    
-    if( (string2 = calloc(strlen(string)+17,sizeof(char))) == NULL)
+    /*/capture_files/*/
+    if( (string2 = calloc(strlen(home_directory)+15+strlen(string)+1,sizeof(char))) == NULL)
     {
         free(string);
         perror("(controllib) selectCaptureFile, failed to allocate path memory : ");
@@ -493,9 +547,10 @@ int startRecord(int socket)
         return EXIT_FAILURE;
     }
     
-    strcpy(string2,"./capture_files/");
-    strcat(string2,string);
+    sprintf(string2,"%s/capture_files/%s",home_directory,string);
     free(string);
+    
+    printf("file : %s\n",string2);
     
     /*envoi de la commande au dispatch*/
     arg.values = string2;
@@ -566,10 +621,10 @@ int setFilter(int socket, int command)
     uint32 response = STATE_NO_ERROR;
     uint16 port;
     int exit_status=EXIT_SUCCESS;
-    char * string;
+    char * string = NULL;
     my_args arg, arg2;
     
-    pcap_t * descr;
+    pcap_t * descr = NULL;
     struct bpf_program filter;
     
     /*recuperation de la chaine de caractere du filtre*/
@@ -590,7 +645,7 @@ int setFilter(int socket, int command)
         fprintf(stderr,"(controllib) setFilter, pcap_open_dead : %s\n",pcap_geterr(descr));
         response = STATE_SERVER_ERROR;
         exit_status = EXIT_FAILURE;
-        goto end1;
+        goto end2;
     }
     
     /*tentative de compilation du filtre*/
@@ -640,8 +695,8 @@ int setFilter(int socket, int command)
     /*routine de fin, reponse au client*/
     end1:
     free(string);
-    end2:
     pcap_close(descr);
+    end2:
     
     response = htonl(response);
     if(send(socket,&response, sizeof(response), 0) != sizeof(response))
@@ -665,32 +720,28 @@ int setFilter(int socket, int command)
     return exit_status;
 }
 
-int file_goto(int socket)
+int file_goto(int socket, int command)
 {
     int response = STATE_NO_ERROR;
     uint32 secs, microsecs;
     struct timeval tval;
     my_args arg;
-    
     if(recv(socket,&secs,sizeof(secs),MSG_WAITALL) != sizeof(secs))
     {
         perror("(controllib) file_goto, failed to receive secs");
         return EXIT_FAILURE;
     }
-    
     if(recv(socket,&microsecs,sizeof(microsecs),MSG_WAITALL) != sizeof(microsecs))
     {
         perror("(controllib) file_goto, failed to receive microsecs");
         return EXIT_FAILURE;
     }
-    
     tval.tv_sec = ntohl(secs);
     tval.tv_usec = ntohl(microsecs);
-        
     arg.values = &tval;
     arg.size = sizeof(tval);
     arg.type = ARG_SET;
-    if( (response = sendCommandToDispatch(COMMAND_FILE_GOTO,1,0,arg)) < 0)
+    if( (response = sendCommandToDispatch(command,1,0,arg)) < 0)
     {
         /*manage error*/
         fprintf(stderr,"(controllib) setSpeed, failed to send command to dispatch\n");
@@ -698,14 +749,12 @@ int file_goto(int socket)
         send(socket,&response, sizeof(response), 0);
         return EXIT_FAILURE;
     }
-        
     response = htonl(response);
     if(send(socket,&response, sizeof(response), 0) != sizeof(response))
     {
         perror("(controllib) setSpeed, failed to send state");
         return EXIT_FAILURE;
     }
-    
     return EXIT_SUCCESS;
 }
 
@@ -714,6 +763,7 @@ int get_state(int socket)
     int response = STATE_NO_ERROR;
     my_args arg;
     struct core_state state;
+    uint64 uint64_value;
     
     arg.values = &state;
     arg.size = sizeof(state);
@@ -734,14 +784,6 @@ int get_state(int socket)
         perror("(controllib) setSpeed, failed to send state");
         return EXIT_FAILURE;
     }
-    
-    printf("Running : %d, Recording : %d, File : %d, Stream : %d, Parsing : %d, Reading : %d, Pause : %d, Goto : %d, Parsed : %d, Finished : %d\n",
-        (IS_RUNNING((&state))?1:0), (IS_RECORDING((&state))?1:0),(IS_FILE((&state))?1:0),(IS_STREAM((&state))?1:0),(IS_PARSING((&state))?1:0),
-        (IS_READING((&state))?1:0), (IS_PAUSE((&state))?1:0),(IS_GOTO((&state))?1:0),(IS_PARSED((&state))?1:0),(IS_FINISHED((&state))?1:0));
-    
-    printf("%lu,%.6u sur %lu,%.6u\n",state.file_current.tv_sec,state.file_current.tv_usec,state.file_duration.tv_sec,state.file_duration.tv_usec);
-    printf("%d sur %d\n",state.packet_readed, state.packet_in_file);
-    printf("file/interface : %s\n",(file_path == NULL)?"none":file_path);
     
     /*envoyer l'etat*/
     state.state = htonl(state.state);
@@ -765,29 +807,29 @@ int get_state(int socket)
         return EXIT_FAILURE;
     }
     
-    state.file_current.tv_sec = htonll(state.file_current.tv_sec);
-    if(send(socket,&state.file_current.tv_sec, sizeof(state.file_current.tv_sec), 0) != sizeof(state.file_current.tv_sec))
+    uint64_value = htonll(state.file_current_tv_sec);
+    if(send(socket,&uint64_value, sizeof(uint64_value), 0) != sizeof(uint64_value))
     {
         perror("(controllib) get_state, failed to send file_current.tv_sec");
         return EXIT_FAILURE;
     }
     
-    state.file_current.tv_usec = htonll(state.file_current.tv_usec);
-    if(send(socket,&state.file_current.tv_usec, sizeof(state.file_current.tv_usec), 0) != sizeof(state.file_current.tv_usec))
+    uint64_value = htonll(state.file_current_tv_usec);
+    if(send(socket,&uint64_value, sizeof(uint64_value), 0) != sizeof(uint64_value))
     {
         perror("(controllib) get_state, failed to send file_current.tv_usec");
         return EXIT_FAILURE;
     }
     
-    state.file_duration.tv_sec = htonll(state.file_duration.tv_sec);
-    if(send(socket,&state.file_duration.tv_sec, sizeof(state.file_duration.tv_sec), 0) != sizeof(state.file_duration.tv_sec))
+    uint64_value = htonll(state.file_duration_tv_sec);
+    if(send(socket,&uint64_value, sizeof(uint64_value), 0) != sizeof(uint64_value))
     {
         perror("(controllib) get_state, failed to send file_duration.tv_sec");
         return EXIT_FAILURE;
     }
     
-    state.file_duration.tv_usec = htonll(state.file_duration.tv_usec);
-    if(send(socket,&state.file_duration.tv_usec, sizeof(state.file_duration.tv_usec), 0) != sizeof(state.file_duration.tv_usec))
+    uint64_value = htonll(state.file_duration_tv_usec);
+    if(send(socket,&uint64_value, sizeof(uint64_value), 0) != sizeof(uint64_value))
     {
         perror("(controllib) get_state, failed to send file_duration.tv_usec");
         return EXIT_FAILURE;
@@ -875,7 +917,7 @@ int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
         return EXIT_FAILURE;
     }
     
-    printf("(controllib) lock\n");
+    /*printf("(controllib) lock\n");*/
     /*on attend le semaphore du dispatch, il doit avoir fini de lire la memoire partagée*/
     if(lockSem(mem->semDescr, 1) < 0)
     {
@@ -883,7 +925,7 @@ int sendCommandToDispatch(int command, int argc_set, int argc_get, ...)
         va_end(ap);
         return EXIT_FAILURE;
     }
-    printf("(controllib) delock\n");
+    /*printf("(controllib) delock\n");*/
     
     /*on verrouille la memoire*/
     if(openMemory(mem)< 0)

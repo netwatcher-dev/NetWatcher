@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that: (1) source code distributions
+ * retain the above copyright notice and this paragraph in its entirety, (2)
+ * distributions including binary code include the above copyright notice and
+ * this paragraph in its entirety in the documentation or other materials
+ * provided with the distribution, and (3) all advertising materials mentioning
+ * features or use of this software display the following acknowledgement:
+ * ``This product includes software developed by the University of California,
+ * Lawrence Berkeley Laboratory and its contributors. (4) Neither the name of
+ * the University nor the names of its contributors may be used to endorse
+ * or promote products derived from this software without specific prior
+ * written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+
 #include "capturefilterlib.h"
 
 void initFilter()
@@ -314,7 +336,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
     struct filter_item ** item_list, ** item_list_iterator;
     struct filter_node ** node_list, ** node_list_iterator;
     struct filter_end_node * end_node_tmp;
-    struct breakpoint * breakpoint_stack_tmp;
+    struct breakpoint * breakpoint_stack_tmp = NULL;
     
     unsigned int non_terminal_count, terminal_count, common_non_terminal_count, new_node_needed, new_item_needed, collision_count;
     struct flatten_item * flatten_graph;
@@ -409,7 +431,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
         perror("(capturefilterlib) addFilter, failed to allocate filter_end_node");
         pcap_freecode(&filter);
         free(flatten_graph);
-        free(breakpoint_stack_tmp);
+        
         return -1;
     }
 
@@ -420,7 +442,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
         pcap_freecode(&filter);
         free(flatten_graph);
         free(end_node_tmp);
-        free(breakpoint_stack_tmp);
+
         return -1;
     }
     
@@ -432,7 +454,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
         free(item_list);
         free(flatten_graph);
         free(end_node_tmp);
-        free(breakpoint_stack_tmp);
+
         return -1;
     }
     
@@ -453,7 +475,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
             free(node_list);
             free(flatten_graph);
             free(end_node_tmp);
-            free(breakpoint_stack_tmp);
+
             return -1;
         }
     }
@@ -480,7 +502,7 @@ int addFilter(const char * filter_string, int filter_id, int pipe, int control_p
             free(node_list);
             free(flatten_graph);
             free(end_node_tmp);
-            free(breakpoint_stack_tmp);
+
             return -1;
         }
     }
@@ -822,8 +844,8 @@ int sendToAllNode(register const uint8 *p,unsigned int buflen, struct timeval ts
     struct filter_node * root_node = master_filter.filter_first_node, * node_tmp;
     struct filter_item * pc;
     
-    register uint32 A, X;
-	register int k, iterateur;
+    register uint32 A = 0, X = 0;
+	register int k = 0, iterateur = 0;
 	sint32 mem[BPF_MEMWORDS];
         
     while(root_node != NULL)
@@ -844,7 +866,7 @@ int sendToAllNode(register const uint8 *p,unsigned int buflen, struct timeval ts
         		case BPF_RET|BPF_K:
         			if( ((u_int)pc->k) != 0)
         			{
-                        printf("SEND %u\n",buflen);
+                        /*printf("SEND %u\n",buflen);*/
         			    buflen -= link_info.header_size;
         			    
                         if( write(pc->k,&ts,sizeof(struct timeval))       < 0 ||
@@ -886,7 +908,7 @@ int sendToAllNode(register const uint8 *p,unsigned int buflen, struct timeval ts
         		case BPF_RET|BPF_A:
         			if( ((u_int)A) != 0)
         			{
-        			    printf("SEND %u\n",buflen);
+        			    /*printf("SEND %u\n",buflen);*/
         			    buflen -= link_info.header_size;
         			    if( write(pc->k,&ts,sizeof(struct timeval))       < 0 ||
                             write(pc->k,&buflen,sizeof(unsigned int))     < 0 ||
@@ -1267,7 +1289,7 @@ int captureSendCommand(uint8 command)
     struct filter_end_node * tmp = master_filter.end_node;
     while(tmp != NULL)
     {
-        printf("write command %d\n", tmp->control_pipe);
+        /*printf("write command %d\n", tmp->control_pipe);*/
         if(write(tmp->control_pipe,&command,sizeof(command)) < 0)
         {
             perror("(capturefilterlib) captureSendCommand, failed to write command :");

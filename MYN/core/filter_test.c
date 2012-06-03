@@ -1,3 +1,42 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h> /*printf, fprintf*/
 #include <stdlib.h> /*exit*/
 
@@ -8,6 +47,8 @@
 #include <stdint.h>
 #include <netinet/ip.h> /*struct ip*/
 #include <sys/time.h>
+
+/*TODO faire une verif des sequences TCP*/
 
 /* IP header V6 */
 typedef struct 
@@ -81,10 +122,25 @@ typedef struct {
 
 void printIPV6(struct in6_addr * ip);
 void printIpType(uint8_t type);
+struct sequence_check * findOrCreateSeqEntry(uint8_t * ip_src, uint8_t * ip_dest,unsigned int ip_addr_size, uint32_t port_src, uint32_t port_dest);
+
+int warning_count;
+
+struct sequence_check
+{
+    unsigned int ip_ver;
+    uint8_t key[40];
+    uint32_t seq;
+    struct sequence_check * next;
+    int fin_count;
+};
+
+struct sequence_check * first_seq;
 
 int main(int argc, char *argv[])
 {
     uint8_t tab[TAB_SIZE];
+    first_seq = NULL;
     
     int client_socket, port, count = 1, init = 1;
     struct sockaddr_in server_address;
@@ -96,7 +152,10 @@ int main(int argc, char *argv[])
     long int diff_result;
     /*int IPV4_enabled = 0, IPV6_enabled = 0, TCP_enabled = 0, UDP_enabled = 0;*/
     unsigned int header_ip_size = 0;
-    unsigned int ip_type, payload_ip_size;
+    unsigned int ip_type, ip_addr_size, payload_ip_size;
+    struct sequence_check * seq_check_tmp;
+    
+    warning_count = 0;
     
     if(argc < 3)
     {
@@ -171,6 +230,7 @@ int main(int argc, char *argv[])
             port = ntohs(header_ip->ip_len)-20;/*4*IP4_HL(header_ip);*/ 
             header_ip_size = 4*IP4_HL(header_ip); 
             payload_ip_size = htons(header_ip->ip_len) - 4*IP4_HL(header_ip);
+            ip_addr_size = 4;
         }
         else if((tab[0] >> 4) == 6)
         {
@@ -179,6 +239,8 @@ int main(int argc, char *argv[])
             port = ntohs(header_ip6->ip_len)+20;
             header_ip_size = 40;
             payload_ip_size = htons(header_ip6->ip_len);
+            
+            ip_addr_size = 16;
         }
         else
         {
@@ -214,13 +276,69 @@ int main(int argc, char *argv[])
         {
             header_tcp = (sniff_tcp *)(tab + header_ip_size );
             printf(" : tcp.src : %u, tcp.dst : %u, tcp.seq : %u, tcp.ack %u", ntohs(header_tcp->th_sport), ntohs(header_tcp->th_dport),ntohl(header_tcp->th_seq),ntohl(header_tcp->th_ack));
-            printf(", tpc header size (word 32 bits) : %u, payload : %u",TH_OFF(header_tcp), payload_ip_size - TH_OFF(header_tcp)*4);
-        
+            printf(", tpc.hsize : %u, payload : %u",TH_OFF(header_tcp), payload_ip_size - TH_OFF(header_tcp)*4);
+            printf(", FIN(%d),SYN(%d),RST(%d),PUSH(%d),ACK(%d),URG(%d),ECE(%d),CWR(%d)",(header_tcp->th_flags&TH_FIN)?1:0,(header_tcp->th_flags&TH_SYN)?1:0,(header_tcp->th_flags&TH_RST)?1:0,(header_tcp->th_flags&TH_PUSH)?1:0,(header_tcp->th_flags&TH_ACK)?1:0,(header_tcp->th_flags&TH_URG)?1:0,(header_tcp->th_flags&TH_ECE)?1:0,(header_tcp->th_flags&TH_CWR)?1:0 );
+            
             if(header_tcp->th_sum == 0)
             {
                 printf(" FORGED");
             }
             printf("\n");
+            
+            if(ip_addr_size == 4)
+            {
+                seq_check_tmp = findOrCreateSeqEntry((uint8_t *) &header_ip->ip_src,(uint8_t *) &header_ip->ip_dst,ip_addr_size,header_tcp->th_sport,header_tcp->th_dport);
+            }
+            else
+            {
+                seq_check_tmp = findOrCreateSeqEntry(header_ip6->ip_src.s6_addr,header_ip6->ip_dst.s6_addr,ip_addr_size,header_tcp->th_sport,header_tcp->th_dport);
+            }
+            
+            if(seq_check_tmp == NULL)
+            {
+                perror("findOrCreateSeqEntry failed : ");
+                return -1;
+            }
+            
+            if(seq_check_tmp->seq == 0) 
+            {
+                printf("NEW SEQ\n");
+            }
+            else
+            {
+                if(seq_check_tmp->fin_count > 0)
+                {
+                    printf("CLOSED STREAM\n");
+                }
+                else if(seq_check_tmp->seq != ntohl(header_tcp->th_seq))
+                {
+                    printf("WARNING (%d) : BAD SEQ %u(waited) vs %u(received)\n",warning_count++,seq_check_tmp->seq,ntohl(header_tcp->th_seq));
+                    return -1;
+                }
+                else
+                {
+                    printf("GOOD SEQ\n");
+                }
+            }
+            
+            if((header_tcp->th_flags & TH_SYN) /*|| (header_tcp->th_flags & TH_FIN)*/)
+            {
+                seq_check_tmp->seq = 1 + ntohl(header_tcp->th_seq) + (payload_ip_size - TH_OFF(header_tcp)*4);
+                
+                /*if((header_tcp->th_flags & TH_FIN))
+                {
+                    seq_check_tmp->fin_count += 1;
+                }*/
+            }
+            else if((header_tcp->th_flags & TH_FIN))
+            {
+                seq_check_tmp->fin_count += 1;
+            }
+            else
+            {
+                seq_check_tmp->seq = ntohl(header_tcp->th_seq) + (payload_ip_size - TH_OFF(header_tcp)*4);
+            }
+            
         }
         else if(ip_type == 0x11)
         {
@@ -401,9 +519,82 @@ void printIpType(uint8_t type)
     }
 }
 
-
 void printIPV6(struct in6_addr * ip)
 {
-    printf("%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x"
+    printf("%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x"
         ,ip->s6_addr[0],ip->s6_addr[1],ip->s6_addr[2],ip->s6_addr[3],ip->s6_addr[4],ip->s6_addr[5],ip->s6_addr[6],ip->s6_addr[7],ip->s6_addr[8],ip->s6_addr[9],ip->s6_addr[10],ip->s6_addr[11],ip->s6_addr[12],ip->s6_addr[13],ip->s6_addr[14],ip->s6_addr[15]);  
 }
+
+struct sequence_check * findOrCreateSeqEntry(uint8_t * ip_src, uint8_t * ip_dest,unsigned int ip_addr_size, uint32_t port_src, uint32_t port_dest)
+{
+    struct sequence_check * tmp;
+    //int i;
+    tmp = first_seq;
+    
+    while(tmp != NULL)
+    {
+        /*printf("%u vs %u, ",tmp->ip_ver,ip_addr_size);
+        
+        for( i = 0;i<ip_addr_size;i++)
+        {
+            printf("%.2x",tmp->key[i]);
+        }
+        
+        printf(" vs ");
+        
+        for( i = 0;i<ip_addr_size;i++)
+        {
+            printf("%.2x",ip_src[i]);
+        }
+        
+        printf(", ");
+        
+        for( i = 0;i<ip_addr_size;i++)
+        {
+            printf("%.2x",tmp->key[16+i]);
+        }
+        
+        printf(" vs ");
+        
+        for( i = 0;i<ip_addr_size;i++)
+        {
+            printf("%.2x",ip_dest[i]);
+        }
+        
+        printf(", %u vs %u",*((uint32_t *)&tmp->key[32]),port_src);
+        printf(", %u vs %u\n",*((uint32_t *)&tmp->key[36]),port_dest);*/
+        
+        if(tmp->ip_ver == ip_addr_size
+        && bcmp(tmp->key,ip_src,ip_addr_size) == 0 
+        && bcmp(&tmp->key[16],ip_dest,ip_addr_size) == 0
+        && *((uint32_t *)&tmp->key[32]) == port_src
+        && *((uint32_t *)&tmp->key[36]) == port_dest)
+        {
+            //printf("\n\nFIND\n\n");
+            return tmp;
+        }
+        
+        tmp = tmp->next;
+    }
+    
+    if( (tmp = malloc(sizeof(struct sequence_check)) ) == NULL )
+    {
+        return NULL;
+    }
+    
+    bcopy(ip_src, tmp->key,ip_addr_size);
+    bcopy(ip_dest, &tmp->key[16],ip_addr_size) ;
+    *((uint32_t *)&tmp->key[32]) = port_src;
+    *((uint32_t *)&tmp->key[36]) = port_dest;
+    
+    tmp->fin_count = 0;
+    tmp->ip_ver = ip_addr_size;
+    tmp->seq = 0;
+    tmp->next = first_seq;
+    first_seq = tmp;
+    
+    return tmp;
+}
+
+
+

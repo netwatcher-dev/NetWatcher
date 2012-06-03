@@ -17,6 +17,7 @@
 
 #MAIN makefile.am
 
+
 VPATH = @srcdir@
 am__make_dryrun = \
   { \
@@ -51,8 +52,8 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-bin_PROGRAMS = start_core$(EXEEXT) control$(EXEEXT) dispatch$(EXEEXT) \
-	collector$(EXEEXT) command$(EXEEXT) wait$(EXEEXT)
+bin_PROGRAMS = netwatcherd$(EXEEXT) control$(EXEEXT) dispatch$(EXEEXT) \
+	collector$(EXEEXT) netwatcher$(EXEEXT) wait$(EXEEXT)
 subdir = .
 DIST_COMMON = README $(am__configure_deps) $(srcdir)/config.h.in \
 	$(srcdir)/makefile.am $(srcdir)/makefile.in \
@@ -68,31 +69,65 @@ mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
+LIBRARIES = $(noinst_LIBRARIES)
+AR = ar
+ARFLAGS = cru
+libcapturefilterlib_a_AR = $(AR) $(ARFLAGS)
+libcapturefilterlib_a_DEPENDENCIES =
+am_libcapturefilterlib_a_OBJECTS = capturefilterlib.$(OBJEXT)
+libcapturefilterlib_a_OBJECTS = $(am_libcapturefilterlib_a_OBJECTS)
+libcollectorlib_a_AR = $(AR) $(ARFLAGS)
+libcollectorlib_a_DEPENDENCIES =
+am_libcollectorlib_a_OBJECTS = collectorlib.$(OBJEXT)
+libcollectorlib_a_OBJECTS = $(am_libcollectorlib_a_OBJECTS)
+libcontrollib_a_AR = $(AR) $(ARFLAGS)
+libcontrollib_a_DEPENDENCIES = libcollectorlib.a libutillib.a \
+	libsharedmemorylib.a
+am_libcontrollib_a_OBJECTS = controllib.$(OBJEXT)
+libcontrollib_a_OBJECTS = $(am_libcontrollib_a_OBJECTS)
+libdelayedlib_a_AR = $(AR) $(ARFLAGS)
+libdelayedlib_a_DEPENDENCIES =
+am_libdelayedlib_a_OBJECTS = delayedlib.$(OBJEXT)
+libdelayedlib_a_OBJECTS = $(am_libdelayedlib_a_OBJECTS)
+libsegmentlib_a_AR = $(AR) $(ARFLAGS)
+libsegmentlib_a_DEPENDENCIES = libcapturefilterlib.a
+am_libsegmentlib_a_OBJECTS = segmentlib.$(OBJEXT)
+libsegmentlib_a_OBJECTS = $(am_libsegmentlib_a_OBJECTS)
+libsharedmemorylib_a_AR = $(AR) $(ARFLAGS)
+libsharedmemorylib_a_DEPENDENCIES =
+am_libsharedmemorylib_a_OBJECTS = sharedmemorylib.$(OBJEXT)
+libsharedmemorylib_a_OBJECTS = $(am_libsharedmemorylib_a_OBJECTS)
+libstructlib_a_AR = $(AR) $(ARFLAGS)
+libstructlib_a_DEPENDENCIES = libsegmentlib.a
+am_libstructlib_a_OBJECTS = structlib.$(OBJEXT)
+libstructlib_a_OBJECTS = $(am_libstructlib_a_OBJECTS)
+libutillib_a_AR = $(AR) $(ARFLAGS)
+libutillib_a_DEPENDENCIES =
+am_libutillib_a_OBJECTS = utillib.$(OBJEXT)
+libutillib_a_OBJECTS = $(am_libutillib_a_OBJECTS)
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_collector_OBJECTS = collector.$(OBJEXT)
 collector_OBJECTS = $(am_collector_OBJECTS)
-collector_DEPENDENCIES = ./collectorlib/libcollectorlib.a
-am_command_OBJECTS = command.$(OBJEXT)
-command_OBJECTS = $(am_command_OBJECTS)
-command_DEPENDENCIES = ./utillib/libutillib.a
+collector_DEPENDENCIES = libcollectorlib.a
 am_control_OBJECTS = control.$(OBJEXT)
 control_OBJECTS = $(am_control_OBJECTS)
-control_DEPENDENCIES = ./controllib/libcontrollib.a \
-	./sharedmemorylib/libsharedmemorylib.a ./utillib/libutillib.a
+control_DEPENDENCIES = libcontrollib.a libsharedmemorylib.a \
+	libutillib.a
 am_dispatch_OBJECTS = dispatch.$(OBJEXT)
 dispatch_OBJECTS = $(am_dispatch_OBJECTS)
-dispatch_DEPENDENCIES = ./structlib/libstructlib.a \
-	./capturefilterlib/libcapturefilterlib.a \
-	./collectorlib/libcollectorlib.a \
-	./sharedmemorylib/libsharedmemorylib.a \
-	./segmentlib/libsegmentlib.a ./utillib/libutillib.a
-am_start_core_OBJECTS = core.$(OBJEXT)
-start_core_OBJECTS = $(am_start_core_OBJECTS)
-start_core_LDADD = $(LDADD)
+dispatch_DEPENDENCIES = libstructlib.a libcapturefilterlib.a \
+	libcollectorlib.a libsharedmemorylib.a libsegmentlib.a \
+	libutillib.a
+am_netwatcher_OBJECTS = command.$(OBJEXT)
+netwatcher_OBJECTS = $(am_netwatcher_OBJECTS)
+netwatcher_DEPENDENCIES = libutillib.a
+am_netwatcherd_OBJECTS = core.$(OBJEXT)
+netwatcherd_OBJECTS = $(am_netwatcherd_OBJECTS)
+netwatcherd_LDADD = $(LDADD)
 am_wait_OBJECTS = wait.$(OBJEXT)
 wait_OBJECTS = $(am_wait_OBJECTS)
-wait_DEPENDENCIES = ./delayedlib/libdelayedlib.a
+wait_DEPENDENCIES = libdelayedlib.a
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -101,31 +136,27 @@ COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
-SOURCES = $(collector_SOURCES) $(command_SOURCES) $(control_SOURCES) \
-	$(dispatch_SOURCES) $(start_core_SOURCES) $(wait_SOURCES)
-DIST_SOURCES = $(collector_SOURCES) $(command_SOURCES) \
-	$(control_SOURCES) $(dispatch_SOURCES) $(start_core_SOURCES) \
-	$(wait_SOURCES)
-RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
-	html-recursive info-recursive install-data-recursive \
-	install-dvi-recursive install-exec-recursive \
-	install-html-recursive install-info-recursive \
-	install-pdf-recursive install-ps-recursive install-recursive \
-	installcheck-recursive installdirs-recursive pdf-recursive \
-	ps-recursive uninstall-recursive
+SOURCES = $(libcapturefilterlib_a_SOURCES) \
+	$(libcollectorlib_a_SOURCES) $(libcontrollib_a_SOURCES) \
+	$(libdelayedlib_a_SOURCES) $(libsegmentlib_a_SOURCES) \
+	$(libsharedmemorylib_a_SOURCES) $(libstructlib_a_SOURCES) \
+	$(libutillib_a_SOURCES) $(collector_SOURCES) \
+	$(control_SOURCES) $(dispatch_SOURCES) $(netwatcher_SOURCES) \
+	$(netwatcherd_SOURCES) $(wait_SOURCES)
+DIST_SOURCES = $(libcapturefilterlib_a_SOURCES) \
+	$(libcollectorlib_a_SOURCES) $(libcontrollib_a_SOURCES) \
+	$(libdelayedlib_a_SOURCES) $(libsegmentlib_a_SOURCES) \
+	$(libsharedmemorylib_a_SOURCES) $(libstructlib_a_SOURCES) \
+	$(libutillib_a_SOURCES) $(collector_SOURCES) \
+	$(control_SOURCES) $(dispatch_SOURCES) $(netwatcher_SOURCES) \
+	$(netwatcherd_SOURCES) $(wait_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-RECURSIVE_CLEAN_TARGETS = mostlyclean-recursive clean-recursive	\
-  distclean-recursive maintainer-clean-recursive
-AM_RECURSIVE_TARGETS = $(RECURSIVE_TARGETS:-recursive=) \
-	$(RECURSIVE_CLEAN_TARGETS:-recursive=) tags TAGS ctags CTAGS \
-	distdir dist dist-all distcheck
 ETAGS = etags
 CTAGS = ctags
-DIST_SUBDIRS = $(SUBDIRS)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
@@ -135,31 +166,6 @@ am__remove_distdir = \
       && rm -rf "$(distdir)" \
       || { sleep 5 && rm -rf "$(distdir)"; }; \
   else :; fi
-am__relativize = \
-  dir0=`pwd`; \
-  sed_first='s,^\([^/]*\)/.*$$,\1,'; \
-  sed_rest='s,^[^/]*/*,,'; \
-  sed_last='s,^.*/\([^/]*\)$$,\1,'; \
-  sed_butlast='s,/*[^/]*$$,,'; \
-  while test -n "$$dir1"; do \
-    first=`echo "$$dir1" | sed -e "$$sed_first"`; \
-    if test "$$first" != "."; then \
-      if test "$$first" = ".."; then \
-        dir2=`echo "$$dir0" | sed -e "$$sed_last"`/"$$dir2"; \
-        dir0=`echo "$$dir0" | sed -e "$$sed_butlast"`; \
-      else \
-        first2=`echo "$$dir2" | sed -e "$$sed_first"`; \
-        if test "$$first2" = "$$first"; then \
-          dir2=`echo "$$dir2" | sed -e "$$sed_rest"`; \
-        else \
-          dir2="../$$dir2"; \
-        fi; \
-        dir0="$$dir0"/"$$first"; \
-      fi; \
-    fi; \
-    dir1=`echo "$$dir1" | sed -e "$$sed_rest"`; \
-  done; \
-  reldir="$$dir2"
 DIST_ARCHIVES = $(distdir).tar.gz
 GZIP_ENV = --best
 distuninstallcheck_listfiles = find . -type f -print
@@ -193,7 +199,7 @@ INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
 LDFLAGS = @LDFLAGS@
 LIBOBJS = @LIBOBJS@
-LIBS = @LIBS@
+LIBS = 
 LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
 MKDIR_P = @MKDIR_P@
@@ -253,21 +259,53 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-AM_CFLAGS = --pedantic -Wall -ansi
-SUBDIRS = capturefilterlib collectorlib controllib delayedlib segmentlib structlib utillib sharedmemorylib
-start_core_SOURCES = core.c
+AM_CFLAGS = --pedantic -Wall -std=c99
+
+#SUBDIRS=capturefilterlib collectorlib controllib delayedlib segmentlib structlib utillib sharedmemorylib
+noinst_LIBRARIES = libcapturefilterlib.a libcollectorlib.a libdelayedlib.a libsharedmemorylib.a libcontrollib.a libsegmentlib.a libstructlib.a libutillib.a
+libcapturefilterlib_a_SOURCES = @top_builddir@/capturefilterlib/capturefilterlib.c @top_builddir@/core_type.h @top_builddir@/wait_communication.h
+libcapturefilterlib_a_LIBADD = 
+libutillib_a_SOURCES = @top_builddir@/utillib/utillib.c @top_builddir@/core_type.h
+libutillib_a_LIBADD = 
+libcollectorlib_a_SOURCES = @top_builddir@/collectorlib/collectorlib.c @top_builddir@/core_type.h
+libcollectorlib_a_LIBADD = 
+libdelayedlib_a_SOURCES = @top_builddir@/delayedlib/delayedlib.c @top_builddir@/core_type.h
+libdelayedlib_a_LIBADD = 
+libsharedmemorylib_a_SOURCES = @top_builddir@/sharedmemorylib/sharedmemorylib.c @top_builddir@/core_type.h
+libsharedmemorylib_a_LIBADD = 
+libcontrollib_a_SOURCES = @top_builddir@/controllib/controllib.c @top_builddir@/core_type.h @top_builddir@/command.h
+libcontrollib_a_LIBADD = libcollectorlib.a libutillib.a libsharedmemorylib.a
+libsegmentlib_a_SOURCES = @top_builddir@/segmentlib/segmentlib.c @top_builddir@/core_type.h
+libsegmentlib_a_LIBADD = libcapturefilterlib.a
+libstructlib_a_SOURCES = @top_builddir@/structlib/structlib.c @top_builddir@/core_type.h
+libstructlib_a_LIBADD = libsegmentlib.a
+
+#include_HEADERS
+EXTRA_DIST = @top_builddir@/utillib/utillib.h \
+				@top_builddir@/command.h \
+				@top_builddir@/core_type.h \
+				@top_builddir@/wait_communication.h \
+				@top_builddir@/capturefilterlib/capturefilterlib.h \
+				@top_builddir@/collectorlib/collectorlib.h \
+				@top_builddir@/delayedlib/delayedlib.h \
+				@top_builddir@/sharedmemorylib/sharedmemorylib.h \
+				@top_builddir@/controllib/controllib.h \
+				@top_builddir@/segmentlib/segmentlib.h \
+				@top_builddir@/structlib/structlib.h
+
+netwatcherd_SOURCES = core.c
 control_SOURCES = control.c
-control_LDADD = ./controllib/libcontrollib.a ./sharedmemorylib/libsharedmemorylib.a ./utillib/libutillib.a
-dispatch_SOURCES = dispatch.c
-dispatch_LDADD = ./structlib/libstructlib.a ./capturefilterlib/libcapturefilterlib.a ./collectorlib/libcollectorlib.a ./sharedmemorylib/libsharedmemorylib.a ./segmentlib/libsegmentlib.a ./utillib/libutillib.a
-collector_SOURCES = collector.c
-collector_LDADD = ./collectorlib/libcollectorlib.a
-command_SOURCES = command.c
-command_LDADD = ./utillib/libutillib.a
-wait_SOURCES = wait.c
-wait_LDADD = ./delayedlib/libdelayedlib.a
+control_LDADD = libcontrollib.a libsharedmemorylib.a libutillib.a -lpcap
+dispatch_SOURCES = dispatch.c command.h core_type.h
+dispatch_LDADD = libstructlib.a libcapturefilterlib.a libcollectorlib.a libsharedmemorylib.a libsegmentlib.a libutillib.a -lm -lpcap
+collector_SOURCES = collector.c command.h
+collector_LDADD = libcollectorlib.a -lreadline
+netwatcher_SOURCES = command.c command.h
+netwatcher_LDADD = libutillib.a -lreadline
+wait_SOURCES = wait.c core_type.h wait_communication.h
+wait_LDADD = libdelayedlib.a -lm
 all: config.h
-	$(MAKE) $(AM_MAKEFLAGS) all-recursive
+	$(MAKE) $(AM_MAKEFLAGS) all-am
 
 .SUFFIXES:
 .SUFFIXES: .c .o .obj
@@ -320,6 +358,41 @@ $(srcdir)/config.h.in:  $(am__configure_deps)
 
 distclean-hdr:
 	-rm -f config.h stamp-h1
+
+clean-noinstLIBRARIES:
+	-test -z "$(noinst_LIBRARIES)" || rm -f $(noinst_LIBRARIES)
+libcapturefilterlib.a: $(libcapturefilterlib_a_OBJECTS) $(libcapturefilterlib_a_DEPENDENCIES) $(EXTRA_libcapturefilterlib_a_DEPENDENCIES) 
+	-rm -f libcapturefilterlib.a
+	$(libcapturefilterlib_a_AR) libcapturefilterlib.a $(libcapturefilterlib_a_OBJECTS) $(libcapturefilterlib_a_LIBADD)
+	$(RANLIB) libcapturefilterlib.a
+libcollectorlib.a: $(libcollectorlib_a_OBJECTS) $(libcollectorlib_a_DEPENDENCIES) $(EXTRA_libcollectorlib_a_DEPENDENCIES) 
+	-rm -f libcollectorlib.a
+	$(libcollectorlib_a_AR) libcollectorlib.a $(libcollectorlib_a_OBJECTS) $(libcollectorlib_a_LIBADD)
+	$(RANLIB) libcollectorlib.a
+libcontrollib.a: $(libcontrollib_a_OBJECTS) $(libcontrollib_a_DEPENDENCIES) $(EXTRA_libcontrollib_a_DEPENDENCIES) 
+	-rm -f libcontrollib.a
+	$(libcontrollib_a_AR) libcontrollib.a $(libcontrollib_a_OBJECTS) $(libcontrollib_a_LIBADD)
+	$(RANLIB) libcontrollib.a
+libdelayedlib.a: $(libdelayedlib_a_OBJECTS) $(libdelayedlib_a_DEPENDENCIES) $(EXTRA_libdelayedlib_a_DEPENDENCIES) 
+	-rm -f libdelayedlib.a
+	$(libdelayedlib_a_AR) libdelayedlib.a $(libdelayedlib_a_OBJECTS) $(libdelayedlib_a_LIBADD)
+	$(RANLIB) libdelayedlib.a
+libsegmentlib.a: $(libsegmentlib_a_OBJECTS) $(libsegmentlib_a_DEPENDENCIES) $(EXTRA_libsegmentlib_a_DEPENDENCIES) 
+	-rm -f libsegmentlib.a
+	$(libsegmentlib_a_AR) libsegmentlib.a $(libsegmentlib_a_OBJECTS) $(libsegmentlib_a_LIBADD)
+	$(RANLIB) libsegmentlib.a
+libsharedmemorylib.a: $(libsharedmemorylib_a_OBJECTS) $(libsharedmemorylib_a_DEPENDENCIES) $(EXTRA_libsharedmemorylib_a_DEPENDENCIES) 
+	-rm -f libsharedmemorylib.a
+	$(libsharedmemorylib_a_AR) libsharedmemorylib.a $(libsharedmemorylib_a_OBJECTS) $(libsharedmemorylib_a_LIBADD)
+	$(RANLIB) libsharedmemorylib.a
+libstructlib.a: $(libstructlib_a_OBJECTS) $(libstructlib_a_DEPENDENCIES) $(EXTRA_libstructlib_a_DEPENDENCIES) 
+	-rm -f libstructlib.a
+	$(libstructlib_a_AR) libstructlib.a $(libstructlib_a_OBJECTS) $(libstructlib_a_LIBADD)
+	$(RANLIB) libstructlib.a
+libutillib.a: $(libutillib_a_OBJECTS) $(libutillib_a_DEPENDENCIES) $(EXTRA_libutillib_a_DEPENDENCIES) 
+	-rm -f libutillib.a
+	$(libutillib_a_AR) libutillib.a $(libutillib_a_OBJECTS) $(libutillib_a_LIBADD)
+	$(RANLIB) libutillib.a
 install-binPROGRAMS: $(bin_PROGRAMS)
 	@$(NORMAL_INSTALL)
 	@list='$(bin_PROGRAMS)'; test -n "$(bindir)" || list=; \
@@ -363,18 +436,18 @@ clean-binPROGRAMS:
 collector$(EXEEXT): $(collector_OBJECTS) $(collector_DEPENDENCIES) $(EXTRA_collector_DEPENDENCIES) 
 	@rm -f collector$(EXEEXT)
 	$(LINK) $(collector_OBJECTS) $(collector_LDADD) $(LIBS)
-command$(EXEEXT): $(command_OBJECTS) $(command_DEPENDENCIES) $(EXTRA_command_DEPENDENCIES) 
-	@rm -f command$(EXEEXT)
-	$(LINK) $(command_OBJECTS) $(command_LDADD) $(LIBS)
 control$(EXEEXT): $(control_OBJECTS) $(control_DEPENDENCIES) $(EXTRA_control_DEPENDENCIES) 
 	@rm -f control$(EXEEXT)
 	$(LINK) $(control_OBJECTS) $(control_LDADD) $(LIBS)
 dispatch$(EXEEXT): $(dispatch_OBJECTS) $(dispatch_DEPENDENCIES) $(EXTRA_dispatch_DEPENDENCIES) 
 	@rm -f dispatch$(EXEEXT)
 	$(LINK) $(dispatch_OBJECTS) $(dispatch_LDADD) $(LIBS)
-start_core$(EXEEXT): $(start_core_OBJECTS) $(start_core_DEPENDENCIES) $(EXTRA_start_core_DEPENDENCIES) 
-	@rm -f start_core$(EXEEXT)
-	$(LINK) $(start_core_OBJECTS) $(start_core_LDADD) $(LIBS)
+netwatcher$(EXEEXT): $(netwatcher_OBJECTS) $(netwatcher_DEPENDENCIES) $(EXTRA_netwatcher_DEPENDENCIES) 
+	@rm -f netwatcher$(EXEEXT)
+	$(LINK) $(netwatcher_OBJECTS) $(netwatcher_LDADD) $(LIBS)
+netwatcherd$(EXEEXT): $(netwatcherd_OBJECTS) $(netwatcherd_DEPENDENCIES) $(EXTRA_netwatcherd_DEPENDENCIES) 
+	@rm -f netwatcherd$(EXEEXT)
+	$(LINK) $(netwatcherd_OBJECTS) $(netwatcherd_LDADD) $(LIBS)
 wait$(EXEEXT): $(wait_OBJECTS) $(wait_DEPENDENCIES) $(EXTRA_wait_DEPENDENCIES) 
 	@rm -f wait$(EXEEXT)
 	$(LINK) $(wait_OBJECTS) $(wait_LDADD) $(LIBS)
@@ -385,11 +458,19 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/capturefilterlib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/collector.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/collectorlib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/command.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/control.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/controllib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/delayedlib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dispatch.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/segmentlib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sharedmemorylib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/structlib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/utillib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/wait.Po@am__quote@
 
 .c.o:
@@ -406,75 +487,117 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(COMPILE) -c `$(CYGPATH_W) '$<'`
 
-# This directory's subdirectories are mostly independent; you can cd
-# into them and run `make' without going through this Makefile.
-# To change the values of `make' variables: instead of editing Makefiles,
-# (1) if the variable is set in `config.status', edit `config.status'
-#     (which will cause the Makefiles to be regenerated when you run `make');
-# (2) otherwise, pass the desired values on the `make' command line.
-$(RECURSIVE_TARGETS):
-	@fail= failcom='exit 1'; \
-	for f in x $$MAKEFLAGS; do \
-	  case $$f in \
-	    *=* | --[!k]*);; \
-	    *k*) failcom='fail=yes';; \
-	  esac; \
-	done; \
-	dot_seen=no; \
-	target=`echo $@ | sed s/-recursive//`; \
-	list='$(SUBDIRS)'; for subdir in $$list; do \
-	  echo "Making $$target in $$subdir"; \
-	  if test "$$subdir" = "."; then \
-	    dot_seen=yes; \
-	    local_target="$$target-am"; \
-	  else \
-	    local_target="$$target"; \
-	  fi; \
-	  ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) $$local_target) \
-	  || eval $$failcom; \
-	done; \
-	if test "$$dot_seen" = "no"; then \
-	  $(MAKE) $(AM_MAKEFLAGS) "$$target-am" || exit 1; \
-	fi; test -z "$$fail"
+capturefilterlib.o: @top_builddir@/capturefilterlib/capturefilterlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT capturefilterlib.o -MD -MP -MF $(DEPDIR)/capturefilterlib.Tpo -c -o capturefilterlib.o `test -f '@top_builddir@/capturefilterlib/capturefilterlib.c' || echo '$(srcdir)/'`@top_builddir@/capturefilterlib/capturefilterlib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/capturefilterlib.Tpo $(DEPDIR)/capturefilterlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/capturefilterlib/capturefilterlib.c' object='capturefilterlib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o capturefilterlib.o `test -f '@top_builddir@/capturefilterlib/capturefilterlib.c' || echo '$(srcdir)/'`@top_builddir@/capturefilterlib/capturefilterlib.c
 
-$(RECURSIVE_CLEAN_TARGETS):
-	@fail= failcom='exit 1'; \
-	for f in x $$MAKEFLAGS; do \
-	  case $$f in \
-	    *=* | --[!k]*);; \
-	    *k*) failcom='fail=yes';; \
-	  esac; \
-	done; \
-	dot_seen=no; \
-	case "$@" in \
-	  distclean-* | maintainer-clean-*) list='$(DIST_SUBDIRS)' ;; \
-	  *) list='$(SUBDIRS)' ;; \
-	esac; \
-	rev=''; for subdir in $$list; do \
-	  if test "$$subdir" = "."; then :; else \
-	    rev="$$subdir $$rev"; \
-	  fi; \
-	done; \
-	rev="$$rev ."; \
-	target=`echo $@ | sed s/-recursive//`; \
-	for subdir in $$rev; do \
-	  echo "Making $$target in $$subdir"; \
-	  if test "$$subdir" = "."; then \
-	    local_target="$$target-am"; \
-	  else \
-	    local_target="$$target"; \
-	  fi; \
-	  ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) $$local_target) \
-	  || eval $$failcom; \
-	done && test -z "$$fail"
-tags-recursive:
-	list='$(SUBDIRS)'; for subdir in $$list; do \
-	  test "$$subdir" = . || ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) tags); \
-	done
-ctags-recursive:
-	list='$(SUBDIRS)'; for subdir in $$list; do \
-	  test "$$subdir" = . || ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) ctags); \
-	done
+capturefilterlib.obj: @top_builddir@/capturefilterlib/capturefilterlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT capturefilterlib.obj -MD -MP -MF $(DEPDIR)/capturefilterlib.Tpo -c -o capturefilterlib.obj `if test -f '@top_builddir@/capturefilterlib/capturefilterlib.c'; then $(CYGPATH_W) '@top_builddir@/capturefilterlib/capturefilterlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/capturefilterlib/capturefilterlib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/capturefilterlib.Tpo $(DEPDIR)/capturefilterlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/capturefilterlib/capturefilterlib.c' object='capturefilterlib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o capturefilterlib.obj `if test -f '@top_builddir@/capturefilterlib/capturefilterlib.c'; then $(CYGPATH_W) '@top_builddir@/capturefilterlib/capturefilterlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/capturefilterlib/capturefilterlib.c'; fi`
+
+collectorlib.o: @top_builddir@/collectorlib/collectorlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT collectorlib.o -MD -MP -MF $(DEPDIR)/collectorlib.Tpo -c -o collectorlib.o `test -f '@top_builddir@/collectorlib/collectorlib.c' || echo '$(srcdir)/'`@top_builddir@/collectorlib/collectorlib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/collectorlib.Tpo $(DEPDIR)/collectorlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/collectorlib/collectorlib.c' object='collectorlib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o collectorlib.o `test -f '@top_builddir@/collectorlib/collectorlib.c' || echo '$(srcdir)/'`@top_builddir@/collectorlib/collectorlib.c
+
+collectorlib.obj: @top_builddir@/collectorlib/collectorlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT collectorlib.obj -MD -MP -MF $(DEPDIR)/collectorlib.Tpo -c -o collectorlib.obj `if test -f '@top_builddir@/collectorlib/collectorlib.c'; then $(CYGPATH_W) '@top_builddir@/collectorlib/collectorlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/collectorlib/collectorlib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/collectorlib.Tpo $(DEPDIR)/collectorlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/collectorlib/collectorlib.c' object='collectorlib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o collectorlib.obj `if test -f '@top_builddir@/collectorlib/collectorlib.c'; then $(CYGPATH_W) '@top_builddir@/collectorlib/collectorlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/collectorlib/collectorlib.c'; fi`
+
+controllib.o: @top_builddir@/controllib/controllib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT controllib.o -MD -MP -MF $(DEPDIR)/controllib.Tpo -c -o controllib.o `test -f '@top_builddir@/controllib/controllib.c' || echo '$(srcdir)/'`@top_builddir@/controllib/controllib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/controllib.Tpo $(DEPDIR)/controllib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/controllib/controllib.c' object='controllib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o controllib.o `test -f '@top_builddir@/controllib/controllib.c' || echo '$(srcdir)/'`@top_builddir@/controllib/controllib.c
+
+controllib.obj: @top_builddir@/controllib/controllib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT controllib.obj -MD -MP -MF $(DEPDIR)/controllib.Tpo -c -o controllib.obj `if test -f '@top_builddir@/controllib/controllib.c'; then $(CYGPATH_W) '@top_builddir@/controllib/controllib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/controllib/controllib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/controllib.Tpo $(DEPDIR)/controllib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/controllib/controllib.c' object='controllib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o controllib.obj `if test -f '@top_builddir@/controllib/controllib.c'; then $(CYGPATH_W) '@top_builddir@/controllib/controllib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/controllib/controllib.c'; fi`
+
+delayedlib.o: @top_builddir@/delayedlib/delayedlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT delayedlib.o -MD -MP -MF $(DEPDIR)/delayedlib.Tpo -c -o delayedlib.o `test -f '@top_builddir@/delayedlib/delayedlib.c' || echo '$(srcdir)/'`@top_builddir@/delayedlib/delayedlib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/delayedlib.Tpo $(DEPDIR)/delayedlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/delayedlib/delayedlib.c' object='delayedlib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o delayedlib.o `test -f '@top_builddir@/delayedlib/delayedlib.c' || echo '$(srcdir)/'`@top_builddir@/delayedlib/delayedlib.c
+
+delayedlib.obj: @top_builddir@/delayedlib/delayedlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT delayedlib.obj -MD -MP -MF $(DEPDIR)/delayedlib.Tpo -c -o delayedlib.obj `if test -f '@top_builddir@/delayedlib/delayedlib.c'; then $(CYGPATH_W) '@top_builddir@/delayedlib/delayedlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/delayedlib/delayedlib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/delayedlib.Tpo $(DEPDIR)/delayedlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/delayedlib/delayedlib.c' object='delayedlib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o delayedlib.obj `if test -f '@top_builddir@/delayedlib/delayedlib.c'; then $(CYGPATH_W) '@top_builddir@/delayedlib/delayedlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/delayedlib/delayedlib.c'; fi`
+
+segmentlib.o: @top_builddir@/segmentlib/segmentlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT segmentlib.o -MD -MP -MF $(DEPDIR)/segmentlib.Tpo -c -o segmentlib.o `test -f '@top_builddir@/segmentlib/segmentlib.c' || echo '$(srcdir)/'`@top_builddir@/segmentlib/segmentlib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/segmentlib.Tpo $(DEPDIR)/segmentlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/segmentlib/segmentlib.c' object='segmentlib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o segmentlib.o `test -f '@top_builddir@/segmentlib/segmentlib.c' || echo '$(srcdir)/'`@top_builddir@/segmentlib/segmentlib.c
+
+segmentlib.obj: @top_builddir@/segmentlib/segmentlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT segmentlib.obj -MD -MP -MF $(DEPDIR)/segmentlib.Tpo -c -o segmentlib.obj `if test -f '@top_builddir@/segmentlib/segmentlib.c'; then $(CYGPATH_W) '@top_builddir@/segmentlib/segmentlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/segmentlib/segmentlib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/segmentlib.Tpo $(DEPDIR)/segmentlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/segmentlib/segmentlib.c' object='segmentlib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o segmentlib.obj `if test -f '@top_builddir@/segmentlib/segmentlib.c'; then $(CYGPATH_W) '@top_builddir@/segmentlib/segmentlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/segmentlib/segmentlib.c'; fi`
+
+sharedmemorylib.o: @top_builddir@/sharedmemorylib/sharedmemorylib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT sharedmemorylib.o -MD -MP -MF $(DEPDIR)/sharedmemorylib.Tpo -c -o sharedmemorylib.o `test -f '@top_builddir@/sharedmemorylib/sharedmemorylib.c' || echo '$(srcdir)/'`@top_builddir@/sharedmemorylib/sharedmemorylib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/sharedmemorylib.Tpo $(DEPDIR)/sharedmemorylib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/sharedmemorylib/sharedmemorylib.c' object='sharedmemorylib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o sharedmemorylib.o `test -f '@top_builddir@/sharedmemorylib/sharedmemorylib.c' || echo '$(srcdir)/'`@top_builddir@/sharedmemorylib/sharedmemorylib.c
+
+sharedmemorylib.obj: @top_builddir@/sharedmemorylib/sharedmemorylib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT sharedmemorylib.obj -MD -MP -MF $(DEPDIR)/sharedmemorylib.Tpo -c -o sharedmemorylib.obj `if test -f '@top_builddir@/sharedmemorylib/sharedmemorylib.c'; then $(CYGPATH_W) '@top_builddir@/sharedmemorylib/sharedmemorylib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/sharedmemorylib/sharedmemorylib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/sharedmemorylib.Tpo $(DEPDIR)/sharedmemorylib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/sharedmemorylib/sharedmemorylib.c' object='sharedmemorylib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o sharedmemorylib.obj `if test -f '@top_builddir@/sharedmemorylib/sharedmemorylib.c'; then $(CYGPATH_W) '@top_builddir@/sharedmemorylib/sharedmemorylib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/sharedmemorylib/sharedmemorylib.c'; fi`
+
+structlib.o: @top_builddir@/structlib/structlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT structlib.o -MD -MP -MF $(DEPDIR)/structlib.Tpo -c -o structlib.o `test -f '@top_builddir@/structlib/structlib.c' || echo '$(srcdir)/'`@top_builddir@/structlib/structlib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/structlib.Tpo $(DEPDIR)/structlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/structlib/structlib.c' object='structlib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o structlib.o `test -f '@top_builddir@/structlib/structlib.c' || echo '$(srcdir)/'`@top_builddir@/structlib/structlib.c
+
+structlib.obj: @top_builddir@/structlib/structlib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT structlib.obj -MD -MP -MF $(DEPDIR)/structlib.Tpo -c -o structlib.obj `if test -f '@top_builddir@/structlib/structlib.c'; then $(CYGPATH_W) '@top_builddir@/structlib/structlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/structlib/structlib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/structlib.Tpo $(DEPDIR)/structlib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/structlib/structlib.c' object='structlib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o structlib.obj `if test -f '@top_builddir@/structlib/structlib.c'; then $(CYGPATH_W) '@top_builddir@/structlib/structlib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/structlib/structlib.c'; fi`
+
+utillib.o: @top_builddir@/utillib/utillib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT utillib.o -MD -MP -MF $(DEPDIR)/utillib.Tpo -c -o utillib.o `test -f '@top_builddir@/utillib/utillib.c' || echo '$(srcdir)/'`@top_builddir@/utillib/utillib.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/utillib.Tpo $(DEPDIR)/utillib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/utillib/utillib.c' object='utillib.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o utillib.o `test -f '@top_builddir@/utillib/utillib.c' || echo '$(srcdir)/'`@top_builddir@/utillib/utillib.c
+
+utillib.obj: @top_builddir@/utillib/utillib.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT utillib.obj -MD -MP -MF $(DEPDIR)/utillib.Tpo -c -o utillib.obj `if test -f '@top_builddir@/utillib/utillib.c'; then $(CYGPATH_W) '@top_builddir@/utillib/utillib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/utillib/utillib.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/utillib.Tpo $(DEPDIR)/utillib.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='@top_builddir@/utillib/utillib.c' object='utillib.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o utillib.obj `if test -f '@top_builddir@/utillib/utillib.c'; then $(CYGPATH_W) '@top_builddir@/utillib/utillib.c'; else $(CYGPATH_W) '$(srcdir)/@top_builddir@/utillib/utillib.c'; fi`
 
 ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
 	list='$(SOURCES) $(HEADERS) $(LISP) $(TAGS_FILES)'; \
@@ -486,23 +609,10 @@ ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
 	mkid -fID $$unique
 tags: TAGS
 
-TAGS: tags-recursive $(HEADERS) $(SOURCES) config.h.in $(TAGS_DEPENDENCIES) \
+TAGS:  $(HEADERS) $(SOURCES) config.h.in $(TAGS_DEPENDENCIES) \
 		$(TAGS_FILES) $(LISP)
 	set x; \
 	here=`pwd`; \
-	if ($(ETAGS) --etags-include --version) >/dev/null 2>&1; then \
-	  include_option=--etags-include; \
-	  empty_fix=.; \
-	else \
-	  include_option=--include; \
-	  empty_fix=; \
-	fi; \
-	list='$(SUBDIRS)'; for subdir in $$list; do \
-	  if test "$$subdir" = .; then :; else \
-	    test ! -f $$subdir/TAGS || \
-	      set "$$@" "$$include_option=$$here/$$subdir/TAGS"; \
-	  fi; \
-	done; \
 	list='$(SOURCES) $(HEADERS) config.h.in $(LISP) $(TAGS_FILES)'; \
 	unique=`for i in $$list; do \
 	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
@@ -521,7 +631,7 @@ TAGS: tags-recursive $(HEADERS) $(SOURCES) config.h.in $(TAGS_DEPENDENCIES) \
 	  fi; \
 	fi
 ctags: CTAGS
-CTAGS: ctags-recursive $(HEADERS) $(SOURCES) config.h.in $(TAGS_DEPENDENCIES) \
+CTAGS:  $(HEADERS) $(SOURCES) config.h.in $(TAGS_DEPENDENCIES) \
 		$(TAGS_FILES) $(LISP)
 	list='$(SOURCES) $(HEADERS) config.h.in $(LISP) $(TAGS_FILES)'; \
 	unique=`for i in $$list; do \
@@ -571,31 +681,6 @@ distdir: $(DISTFILES)
 	    test -f "$(distdir)/$$file" \
 	    || cp -p $$d/$$file "$(distdir)/$$file" \
 	    || exit 1; \
-	  fi; \
-	done
-	@list='$(DIST_SUBDIRS)'; for subdir in $$list; do \
-	  if test "$$subdir" = .; then :; else \
-	    $(am__make_dryrun) \
-	      || test -d "$(distdir)/$$subdir" \
-	      || $(MKDIR_P) "$(distdir)/$$subdir" \
-	      || exit 1; \
-	    dir1=$$subdir; dir2="$(distdir)/$$subdir"; \
-	    $(am__relativize); \
-	    new_distdir=$$reldir; \
-	    dir1=$$subdir; dir2="$(top_distdir)"; \
-	    $(am__relativize); \
-	    new_top_distdir=$$reldir; \
-	    echo " (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) top_distdir="$$new_top_distdir" distdir="$$new_distdir" \\"; \
-	    echo "     am__remove_distdir=: am__skip_length_check=: am__skip_mode_fix=: distdir)"; \
-	    ($(am__cd) $$subdir && \
-	      $(MAKE) $(AM_MAKEFLAGS) \
-	        top_distdir="$$new_top_distdir" \
-	        distdir="$$new_distdir" \
-		am__remove_distdir=: \
-		am__skip_length_check=: \
-		am__skip_mode_fix=: \
-	        distdir) \
-	      || exit 1; \
 	  fi; \
 	done
 	-test -n "$(am__skip_mode_fix)" \
@@ -729,22 +814,21 @@ distcleancheck: distclean
 	       $(distcleancheck_listfiles) ; \
 	       exit 1; } >&2
 check-am: all-am
-check: check-recursive
-all-am: makefile $(PROGRAMS) config.h
-installdirs: installdirs-recursive
-installdirs-am:
+check: check-am
+all-am: makefile $(LIBRARIES) $(PROGRAMS) config.h
+installdirs:
 	for dir in "$(DESTDIR)$(bindir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
-install: install-recursive
-install-exec: install-exec-recursive
-install-data: install-data-recursive
-uninstall: uninstall-recursive
+install: install-am
+install-exec: install-exec-am
+install-data: install-data-am
+uninstall: uninstall-am
 
 install-am: all-am
 	@$(MAKE) $(AM_MAKEFLAGS) install-exec-am install-data-am
 
-installcheck: installcheck-recursive
+installcheck: installcheck-am
 install-strip:
 	if test -z '$(STRIP)'; then \
 	  $(MAKE) $(AM_MAKEFLAGS) INSTALL_PROGRAM="$(INSTALL_STRIP_PROGRAM)" \
@@ -766,97 +850,96 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-clean: clean-recursive
+clean: clean-am
 
-clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
+clean-am: clean-binPROGRAMS clean-generic clean-noinstLIBRARIES \
+	mostlyclean-am
 
-distclean: distclean-recursive
+distclean: distclean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf ./$(DEPDIR)
 	-rm -f makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
 
-dvi: dvi-recursive
+dvi: dvi-am
 
 dvi-am:
 
-html: html-recursive
+html: html-am
 
 html-am:
 
-info: info-recursive
+info: info-am
 
 info-am:
 
 install-data-am:
 
-install-dvi: install-dvi-recursive
+install-dvi: install-dvi-am
 
 install-dvi-am:
 
 install-exec-am: install-binPROGRAMS
 
-install-html: install-html-recursive
+install-html: install-html-am
 
 install-html-am:
 
-install-info: install-info-recursive
+install-info: install-info-am
 
 install-info-am:
 
 install-man:
 
-install-pdf: install-pdf-recursive
+install-pdf: install-pdf-am
 
 install-pdf-am:
 
-install-ps: install-ps-recursive
+install-ps: install-ps-am
 
 install-ps-am:
 
 installcheck-am:
 
-maintainer-clean: maintainer-clean-recursive
+maintainer-clean: maintainer-clean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
 	-rm -rf ./$(DEPDIR)
 	-rm -f makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
-mostlyclean: mostlyclean-recursive
+mostlyclean: mostlyclean-am
 
 mostlyclean-am: mostlyclean-compile mostlyclean-generic
 
-pdf: pdf-recursive
+pdf: pdf-am
 
 pdf-am:
 
-ps: ps-recursive
+ps: ps-am
 
 ps-am:
 
 uninstall-am: uninstall-binPROGRAMS
 
-.MAKE: $(RECURSIVE_CLEAN_TARGETS) $(RECURSIVE_TARGETS) all \
-	ctags-recursive install-am install-strip tags-recursive
+.MAKE: all install-am install-strip
 
-.PHONY: $(RECURSIVE_CLEAN_TARGETS) $(RECURSIVE_TARGETS) CTAGS GTAGS \
-	all all-am am--refresh check check-am clean clean-binPROGRAMS \
-	clean-generic ctags ctags-recursive dist dist-all dist-bzip2 \
-	dist-gzip dist-lzip dist-lzma dist-shar dist-tarZ dist-xz \
-	dist-zip distcheck distclean distclean-compile \
-	distclean-generic distclean-hdr distclean-tags distcleancheck \
-	distdir distuninstallcheck dvi dvi-am html html-am info \
-	info-am install install-am install-binPROGRAMS install-data \
-	install-data-am install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs installdirs-am maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-compile \
-	mostlyclean-generic pdf pdf-am ps ps-am tags tags-recursive \
-	uninstall uninstall-am uninstall-binPROGRAMS
+.PHONY: CTAGS GTAGS all all-am am--refresh check check-am clean \
+	clean-binPROGRAMS clean-generic clean-noinstLIBRARIES ctags \
+	dist dist-all dist-bzip2 dist-gzip dist-lzip dist-lzma \
+	dist-shar dist-tarZ dist-xz dist-zip distcheck distclean \
+	distclean-compile distclean-generic distclean-hdr \
+	distclean-tags distcleancheck distdir distuninstallcheck dvi \
+	dvi-am html html-am info info-am install install-am \
+	install-binPROGRAMS install-data install-data-am install-dvi \
+	install-dvi-am install-exec install-exec-am install-html \
+	install-html-am install-info install-info-am install-man \
+	install-pdf install-pdf-am install-ps install-ps-am \
+	install-strip installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-compile mostlyclean-generic pdf pdf-am ps ps-am \
+	tags uninstall uninstall-am uninstall-binPROGRAMS
 
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.

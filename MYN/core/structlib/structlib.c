@@ -1,9 +1,44 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
 #include "structlib.h"
 
 datalink_check datalink_check_function_plop[DATALINK_MANAGED] = 
 {
     {DLT_EN10MB    ,14,1500,0,checkETHERNET},
-    {DLT_IEEE802_11,57,2373,0,checkIEEE80211},
+    {DLT_IEEE802_11_RADIO,57,2373,0,checkIEEE80211},
     
     /*Add new datalink protocole here*/
     
@@ -535,7 +570,8 @@ int checkTCP(const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_so
     if( !(state & STATE_PARSING) )
     {
         ret_value = addNewSegment_ipv4(header_tcp,header_ip,datas);
-        sendReadySegment_ipv4(header_tcp, header_ip,pkthdr, datas);
+        setIPv4TCP(header_ip,header_tcp);
+        /*sendReadySegment_ipv4(header_tcp, header_ip,pkthdr->ts);*/
         return ret_value;
     }
 #endif
@@ -544,7 +580,7 @@ int checkTCP(const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_so
 
 int checkTCP_ipv6(const struct pcap_pkthdr *pkthdr, const uint8 * datas,int local_source, collector_entry * entry)
 {
-    unsigned int segment_size;
+    /*unsigned int segment_size = 0;*/
     sniff_ip6 * header_ip6 = (sniff_ip6 *)&datas[link_info.header_size];
     sniff_tcp * header_tcp;    
 
@@ -552,7 +588,7 @@ int checkTCP_ipv6(const struct pcap_pkthdr *pkthdr, const uint8 * datas,int loca
     int ret_value;
     #endif
 
-    segment_size = ntohs(header_ip6->ip_len);
+    /*segment_size = ntohs(header_ip6->ip_len);*/
 
     /*TODO check size*/
     
@@ -568,7 +604,8 @@ int checkTCP_ipv6(const struct pcap_pkthdr *pkthdr, const uint8 * datas,int loca
     if( !(state & STATE_PARSING) )
     {
         ret_value = addNewSegment_ipv6(header_tcp,header_ip6,datas);
-        sendReadySegment_ipv6(header_tcp, header_ip6,pkthdr, datas);
+        setIPv6TCP(header_ip6,header_tcp);
+        /*sendReadySegment_ipv6(header_tcp, header_ip6,pkthdr->ts);*/
         return ret_value;
     }
 
@@ -899,7 +936,7 @@ void printIpType(uint8 type)
 
 void printIPV6(struct in6_addr * ip)
 {
-    printf("%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x"
+    printf("%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x"
         ,ip->s6_addr[0],ip->s6_addr[1],ip->s6_addr[2],ip->s6_addr[3],ip->s6_addr[4],ip->s6_addr[5],ip->s6_addr[6],ip->s6_addr[7],ip->s6_addr[8],ip->s6_addr[9],ip->s6_addr[10],ip->s6_addr[11],ip->s6_addr[12],ip->s6_addr[13],ip->s6_addr[14],ip->s6_addr[15]);  
 }
 

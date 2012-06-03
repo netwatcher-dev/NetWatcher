@@ -1,9 +1,46 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
 #include "segmentlib.h"
 
 sequence_entry_ipv4 * getEntry(uint32 ip_src, uint32 ip_dest, uint16 port_src, uint16 port_dst)
 {
     sequence_entry_ipv4 * ret = seq_start_ipv4, * tmp;
     struct timeval current;
+    
+    last_header_ip = NULL;last_header_tcp = NULL;last_header_ip6 = NULL;
     
     if(gettimeofday(&current,NULL) != 0)
     {
@@ -40,6 +77,9 @@ sequence_entry * createEntry(uint32 ip_src, uint32 ip_dest, uint16 port_src, uin
 {
     /*creation si n'existe pas*/
     sequence_entry_ipv4 * ret = calloc(1,sizeof(sequence_entry_ipv4));
+    
+    last_header_ip = NULL;last_header_tcp = NULL;last_header_ip6 = NULL;
+    
     if(ret == NULL)
     {
         perror("(segmentlib) createEntry, failed to allocate memory");
@@ -88,6 +128,8 @@ sequence_entry_ipv6 * getEntry_ipv6(uint8 * ip_src, uint8 * ip_dest, uint16 port
     sequence_entry_ipv6 * ret = seq_start_ipv6, * tmp;
     struct timeval current;
     
+    last_header_ip = NULL;last_header_tcp = NULL;last_header_ip6 = NULL;
+    
     /*printf("(getEntry_ipv6) IP_SRC : %.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",ip_src[0],ip_src[1],ip_src[2],ip_src[3],ip_src[4],ip_src[5],ip_src[6],ip_src[7],ip_src[8],ip_src[9],ip_src[10],ip_src[11],ip_src[12],ip_src[13],ip_src[14],ip_src[15]);
     printf(", IP_DEST : %.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",ip_dest[0],ip_dest[1],ip_dest[2],ip_dest[3],ip_dest[4],ip_dest[5],ip_dest[6],ip_dest[7],ip_dest[8],ip_dest[9],ip_dest[10],ip_dest[11],ip_dest[12],ip_dest[13],ip_dest[14],ip_dest[15]);
     printf(", port_src : %u, port_dest : %u\n",port_src, port_dst);*/
@@ -128,6 +170,9 @@ sequence_entry * createEntry_ipv6(uint8 * ip_src, uint8 * ip_dest, uint16 port_s
 {
     /*creation si n'existe pas*/
     sequence_entry_ipv6 * ret = calloc(1,sizeof(sequence_entry_ipv6));
+    
+    last_header_ip = NULL;last_header_tcp = NULL;last_header_ip6 = NULL;
+    
     if(ret == NULL)
     {
         perror("(segmentlib) createEntry, failed to allocate memory");
@@ -769,6 +814,7 @@ int addNewSegment_ipv4(sniff_tcp * header_tcp, sniff_ip * header_ip, const uint8
         }
         else
         {
+            /*printf("set new seq %u (1)\n",new_seq);*/
             /*if(paquet_size - TH_OFF(header_tcp)*4 <= 0) pas de traitement supplementaire si le paquet est vide
             {
                 printf("tcp drop empty segment\n");
@@ -812,13 +858,15 @@ int addNewSegment_ipv4(sniff_tcp * header_tcp, sniff_ip * header_ip, const uint8
         #ifdef PRINT_TCP
         printf("(structlib) checkTCP, tcp forward\n");
         #endif
+        /*printf("set new seq %u (2), old seq : %u\n",new_seq,ntohl(header_tcp->th_seq));*/
         seq_entry->seq = new_seq;
         return 0;
     }
     else if (ntohl(header_tcp->th_seq) > seq_entry->seq)
     {/*le segment est trop loin, inversion probable, on bufferise*/
-        printf("(ipv4) waited seq : %u, receive seq %u\n",seq_entry->seq,ntohl(header_tcp->th_seq));
+        
         #if defined(PRINT_TCP) || defined(PRINT_DROP)
+        printf("(ipv4) waited seq : %u, receive seq %u\n",seq_entry->seq,ntohl(header_tcp->th_seq));
         printf("(structlib) checkTCP, tcp bufferise\n");
         #endif
         /*le flux tcp est probablement brisé*/
@@ -838,6 +886,14 @@ int addNewSegment_ipv4(sniff_tcp * header_tcp, sniff_ip * header_ip, const uint8
         #if defined(PRINT_TCP) || defined(PRINT_DROP)
         printf("(structlib) checkTCP, tcp duplicate data, drop\n");
         #endif
+        
+        /*TODO*/
+        
+        if(new_seq >  seq_entry->seq)
+        {
+            printf("!!!!! WARNING OVERLAP WITH LOSE !!!!!, waited seq : %u, received seq : %u, new received seq : %u\n",seq_entry->seq,ntohl(header_tcp->th_seq),new_seq);
+        }
+        
         return -1;
     }
 }
@@ -928,7 +984,9 @@ int addNewSegment_ipv6(sniff_tcp * header_tcp, sniff_ip6 * header_ip6, const uin
         /*le flux tcp est probablement brisé*/
         if(seq_entry->count >= SEGMAXBUFFBYSOCK)
         {
-            /*printf("maybe tcp broken : %lx\n",(unsigned long)seq_entry);*/
+            #if defined(PRINT_TCP) || defined(PRINT_DROP)
+            printf("maybe tcp broken : %u\n",seq_entry->seq);
+            #endif
             seq_entry->flags |= SEG_FLAGS_BROKEN;
             cleanData(seq_entry);
             return -1;
@@ -942,11 +1000,19 @@ int addNewSegment_ipv6(sniff_tcp * header_tcp, sniff_ip6 * header_ip6, const uin
         #if defined(PRINT_TCP) || defined(PRINT_DROP)
         printf("(structlib) checkTCP_ipv6, tcp duplicate data\n");
         #endif
+        
+        /*TODO*/
+        
+        if(new_seq >  seq_entry->seq)
+        {
+            printf("!!!!! WARNING OVERLAP WITH LOSE !!!!!, waited seq : %u, received seq : %u, new received seq : %u\n",seq_entry->seq,ntohl(header_tcp->th_seq),new_seq);
+        }
+        
         return -1;
     }
 }
 
-void sendReadySegment_ipv4(sniff_tcp * tcp, sniff_ip * ip, const struct pcap_pkthdr *pkthdr, const uint8 * datas)
+void sendReadySegment_ipv4(sniff_tcp * tcp, sniff_ip * ip, struct timeval t)
 {
     sequence_entry_ipv4 * seq_entry_ipv4;
     sequence_entry * seq_entry;
@@ -967,6 +1033,7 @@ void sendReadySegment_ipv4(sniff_tcp * tcp, sniff_ip * ip, const struct pcap_pkt
         if(seq_entry->linked_buffer->seq + seq_entry->linked_buffer->dsize-1 > seq_entry->seq)
         {
             #ifdef PRINT_TCP
+            printf("SEND FORGED, seq = %u\n",seq_entry->linked_buffer->seq);
             printf("\nSEND forged packet\n");
             #endif
             
@@ -980,7 +1047,7 @@ void sendReadySegment_ipv4(sniff_tcp * tcp, sniff_ip * ip, const struct pcap_pkt
             #endif
             
             /*send segment*/
-            sendToAllNode(tmp,ntohs(ip->ip_len)+link_info.header_size,pkthdr->ts);
+            sendToAllNode(tmp,ntohs(ip->ip_len)+link_info.header_size,t);
             tcp = (sniff_tcp*)(tmp + link_info.header_size + 20);
             
             #ifdef PRINT_TCP
@@ -1035,7 +1102,7 @@ void sendReadySegment_ipv4(sniff_tcp * tcp, sniff_ip * ip, const struct pcap_pkt
     }
 }
 
-void sendReadySegment_ipv6(sniff_tcp * tcp, sniff_ip6 * ip6, const struct pcap_pkthdr *pkthdr, const uint8 * datas)
+void sendReadySegment_ipv6(sniff_tcp * tcp, sniff_ip6 * ip6, struct timeval t)
 {
     sequence_entry_ipv6 * seq_entry_ipv6;
     sequence_entry * seq_entry;
@@ -1068,7 +1135,7 @@ void sendReadySegment_ipv6(sniff_tcp * tcp, sniff_ip6 * ip6, const struct pcap_p
             #endif
             
             /*send segment*/
-            sendToAllNode(tmp,ntohs(ip6->ip_len)+40+link_info.header_size,pkthdr->ts);
+            sendToAllNode(tmp,ntohs(ip6->ip_len)+40+link_info.header_size,t);
             
             tcp = (sniff_tcp*)(tmp + link_info.header_size + 40);
             
@@ -1122,3 +1189,36 @@ void sendReadySegment_ipv6(sniff_tcp * tcp, sniff_ip6 * ip6, const struct pcap_p
         removeEntry_ipv6(seq_entry_ipv6);
     }
 }
+
+void setIPv4TCP(sniff_ip * ip, sniff_tcp * tcp)
+{
+    last_header_ip = ip;
+    last_header_tcp = tcp;
+    last_header_ip6 = NULL;
+}
+
+void setIPv6TCP(sniff_ip6 * ip, sniff_tcp * tcp)
+{
+    last_header_ip = NULL;
+    last_header_tcp = tcp;
+    last_header_ip6 = ip;
+}
+
+void forwardSegmentInBuffer(struct timeval t)
+{
+    if(last_header_tcp != NULL)
+    {
+        if(last_header_ip != NULL)
+        {
+            sendReadySegment_ipv4(last_header_tcp,last_header_ip, t);
+        }
+        else if(last_header_ip6 != NULL)
+        {
+            sendReadySegment_ipv6(last_header_tcp,last_header_ip6, t);
+        }
+    }
+} 
+
+
+
+

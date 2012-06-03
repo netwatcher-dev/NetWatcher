@@ -1,12 +1,53 @@
+/*
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  The licenses for most software and other practical works are designed
+to take away your freedom to share and change the works.  By contrast,
+the GNU General Public License is intended to guarantee your freedom to
+share and change all versions of a program--to make sure it remains free
+software for all its users.  We, the Free Software Foundation, use the
+GNU General Public License for most of our software; it applies also to
+any other work released this way by its authors.  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+them if you wish), that you receive source code or can get it if you
+want it, that you can change the software or use pieces of it in new
+free programs, and that you know you can do these things.
+
+  To protect your rights, we need to prevent others from denying you
+these rights or asking you to surrender the rights.  Therefore, you have
+certain responsibilities if you distribute copies of the software, or if
+you modify it: responsibilities to respect the freedom of others.
+*/
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #ifdef __gnu_linux__
 
 #define _BSD_SOURCE
 #define _POSIX_SOURCE
+#define _ISOC99_SOURCE
 #include <sys/time.h>
 #include <sys/types.h>
 
 #endif
 
+#include <math.h>
 #include <stdio.h> /*printf, perror, sprintf*/
 #include <unistd.h> /*fork, execvp*/
 #include <signal.h>
@@ -36,7 +77,7 @@ int client_connected;
 int main(int argc, char *argv[])
 {
     int p, p2;
-    int s_sock, c_sock, needToDelay;
+    int s_sock, c_sock = -1, needToDelay;
     struct sockaddr_in sockaddr_client;
     socklen_t addr_size;
     uint8 buff[BUFFER_SIZE], command_arg;
@@ -92,8 +133,8 @@ int main(int argc, char *argv[])
     
     while(1)
     {
-        /*DEBUG INFO
-        printf("filecount : (%u)/(%u), input_count : (%u)/(%u), output_count : (%u)/(%u)\n",file_count,DELAYED_MAX_FILE_COUNT,input_buffer_size,DELAYED_MAX_PACKET_IN_MEMORY,output_buffer_size,DELAYED_MAX_PACKET_IN_MEMORY);
+        /*DEBUG INFO*/
+        /*printf("filecount : (%u)/(%u), input_count : (%u)/(%u), output_count : (%u)/(%u)\n",file_count,DELAYED_MAX_FILE_COUNT,input_buffer_size,DELAYED_MAX_PACKET_IN_MEMORY,output_buffer_size,DELAYED_MAX_PACKET_IN_MEMORY);
         END*/
         
         /*wait for an event*/
@@ -111,7 +152,7 @@ int main(int argc, char *argv[])
         delay_updateTime(); 
         
         /*TIMEOUT EVENT, do nothing*/
-        if(recv_size == 0)
+        if(recv_size == 0 && c_sock > 0)
         {
             /*packets in buffer to forward?*/
             delay_sendDelayedPacket(c_sock, &client_connected);
@@ -179,6 +220,12 @@ int main(int argc, char *argv[])
                     break;
                 case KILL_YOU:
                     printf("(wait) kill command\n");
+                    
+                    close(p);
+                    close(p2);
+                    close(c_sock);
+                    close(s_sock);
+                    
                     exit(EXIT_SUCCESS);
                     break;
             }
@@ -261,15 +308,19 @@ int main(int argc, char *argv[])
                     exit(EXIT_FAILURE);
                 }
 
-                if(needToDelay)
+                if(needToDelay)/*on delay*/
                 {
                     if(tpacket != NULL)
                     {
                         memcpy(&tpacket->datas[tpacket->size - data_to_receive],buff,recv_size);
                     }
+                    /*else
+                    {
+                        printf("(wait) drop packet (1)\n");
+                    }*/
                     data_to_receive -= recv_size;
                 }
-                else if(client_connected)
+                else if(client_connected) /*on envoie directement*/
                 {
                     data_to_receive -= recv_size;
                     if(send(c_sock, buff, recv_size,0) < recv_size)
@@ -278,8 +329,9 @@ int main(int argc, char *argv[])
                         continue;
                     }
                 }
-                else
+                else /*on drop*/
                 {
+                    /*printf("(wait) drop packet (2)\n");*/
                     data_to_receive -= recv_size;
                 }
             }    
