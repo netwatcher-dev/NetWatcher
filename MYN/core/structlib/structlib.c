@@ -334,11 +334,23 @@ int checkIPV4(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned 
         return -1;
     }
     
+    ifp_tmp = ifp;
+    *local_address = 0;
+    while(ifp_tmp != NULL)
+    {
+        if(ifp_tmp->ifa_addr->sa_family == AF_INET && ((struct sockaddr_in *)  ifp_tmp->ifa_addr)->sin_addr.s_addr == header_ip->ip_src.s_addr)
+        {
+            *local_address = 1;
+            break;
+        }
+        ifp_tmp = ifp_tmp->ifa_next;
+    }
+    
     #ifndef NO_DROP_LOCAL
     /*check ip size*/
     if(link_info.frame_payload_max_size < ntohs(header_ip->ip_len))
     {   
-        ifp_tmp = ifp;
+        /*ifp_tmp = ifp;
         while(ifp_tmp != NULL)
         {
             if(ifp_tmp->ifa_addr->sa_family == AF_INET && ((struct sockaddr_in *)  ifp_tmp->ifa_addr)->sin_addr.s_addr == header_ip->ip_src.s_addr)
@@ -347,9 +359,11 @@ int checkIPV4(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned 
                 break;
             }
             ifp_tmp = ifp_tmp->ifa_next;
-        }
+        }*/
         
-        if(ifp_tmp == NULL)
+        /*if(ifp_tmp == NULL)*/
+        /*TODO ça ne peut pas arriver qu'un paquet depasse la taille ethernet en n'etant pas local*/
+        if((*local_address) == 0)
         {
             #if defined(PRINT_IP) || defined(PRINT_DROP)
             printf("(structlib) checkIPV4, too big packet\n");
@@ -380,15 +394,16 @@ int checkIPV4(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned 
     entry->ver = 4;
     memcpy(entry->sip, &header_ip->ip_src.s_addr, 4);
     memcpy(entry->dip, &header_ip->ip_dst.s_addr, 4);
-	
+
+/*TODO ce truc drop même les packets corrompus, le ifndef n'est pas bien positionné*/	
 #ifndef NO_DROP_LOCAL
 	/*check checksum ip*/
 	if(ntohs(header_ip->ip_sum) != checksum && (*local_address) == 0)
 	{
-        ifp_tmp = ifp;
+        /*ifp_tmp = ifp;
         while(ifp_tmp != NULL)
         {
-            if (ifp_tmp->ifa_addr->sa_family == AF_INET) /*WARNING : only ipv4*/
+            if (ifp_tmp->ifa_addr->sa_family == AF_INET)
             {   
                 if( ((struct sockaddr_in *)  ifp_tmp->ifa_addr)->sin_addr.s_addr == header_ip->ip_src.s_addr)
                 {
@@ -397,7 +412,7 @@ int checkIPV4(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned 
                 }
             }
             ifp_tmp = ifp_tmp->ifa_next;
-        }
+        }*/
         
         #if defined(PRINT_IP) || defined(PRINT_DROP)
         printf("packet ip checksum invalid\n");
