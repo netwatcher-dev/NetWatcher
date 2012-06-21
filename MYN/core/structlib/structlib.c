@@ -265,7 +265,8 @@ int checkIEEE80211(const uint8 * datas, int data_length, int * encapslated_proto
     *encapslated_protocol = ntohs(llc->type);
     
     /*update header size*/
-    link_info.header_size = ieee_radio->it_len+32;
+    /*link_info.header_size = ieee_radio->it_len+32;
+    link_info.header_size = ieee_radio->it_len+34;*/
     
     /*check retry flags*/
     if(FC_RETRY(ieee->fc))
@@ -278,7 +279,7 @@ int checkIEEE80211(const uint8 * datas, int data_length, int * encapslated_proto
     }
     
     #if defined(PRINT_IEE80211)
-    printf("(structlib) checkIEEE80211, FORWARD !!!!!!!!!");
+    printf("(structlib) checkIEEE80211, FORWARD !!!!!!!!!\n");
     #endif
     
     return 0;
@@ -329,7 +330,7 @@ int checkIPV4(const uint8 * datas, int data_length,struct ifaddrs *ifp,unsigned 
     if(data_length < (link_info.header_size + ntohs(header_ip->ip_len)))
     {
         #if defined(PRINT_IP) || defined(PRINT_DROP)
-        printf("(structlib) checkIPV4, too short packet\n");
+        printf("(structlib) checkIPV4, too short packet %d %d %d\n",data_length, link_info.header_size, header_ip->ip_len);
         #endif
         return -1;
     }
@@ -596,10 +597,11 @@ int checkTCP(const struct pcap_pkthdr *pkthdr, const uint8 * datas, int local_so
 int checkTCP_ipv6(const struct pcap_pkthdr *pkthdr, const uint8 * datas,int local_source, collector_entry * entry)
 {
     /*unsigned int segment_size = 0;*/
-    sniff_ip6 * header_ip6 = (sniff_ip6 *)&datas[link_info.header_size];
+    
     sniff_tcp * header_tcp;    
 
     #ifndef NO_RESEQ
+    sniff_ip6 * header_ip6 = (sniff_ip6 *)&datas[link_info.header_size];
     int ret_value;
     #endif
 

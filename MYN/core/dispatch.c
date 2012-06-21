@@ -1288,6 +1288,14 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
                 return;
             }
             
+            /*RECORDING*/
+            if(state & STATE_RECORDING)
+            {
+                pcap_dump((u_char *)dumper_descr,pkthdr,packet);
+                
+                /*si on le fait après le transport checker, les données bufferisée ne seront pas sauvegardée...*/
+            }
+            
             /*TRANSPORT CHECKER*/
             for(iterateur_bis = 0;iterateur_bis<(TRANSPORT_MANAGED-1);iterateur_bis+=1)
             {
@@ -1333,12 +1341,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
             return;
         }
     }
-    
-    /*RECORDING*/
-    if(state & STATE_RECORDING)
-    {
-        pcap_dump((u_char *)dumper_descr,pkthdr,packet);
-    }
 	
 	/* COLLECTOR */
     header_to_send.epoch_time = pkthdr->ts.tv_sec;  /* Epoch time */
@@ -1350,7 +1352,9 @@ void got_packet(u_char *args, const struct pcap_pkthdr *pkthdr, const uint8 * pa
         sendToAllNode(packet,link_info.header_size+network_size,(pkthdr->ts));
     }
     
+    #ifndef NO_RESEQ
     forwardSegmentInBuffer(pkthdr->ts);
+    #endif
 }
 
 void goto_func(u_char *args, const struct pcap_pkthdr *pkthdr, const u_char *packet)
